@@ -854,9 +854,16 @@ inline void handle_input(SDL_Event* event)
   if (disabled()) return;
 
   if (!menu_open_state() && event->type == SDL_KEYDOWN && event->key.repeat == 0) {
-    const int scancode = static_cast<int>(event->key.keysym.scancode);
+    const int key = static_cast<int>(event->key.keysym.scancode);
     for (bind_entry& entry : entries()) {
-      if (entry.enabled && entry.condition == bind_condition::key && entry.key == scancode) {
+      if (entry.enabled && entry.condition == bind_condition::key && entry.key == key) {
+        entry.press_pending = true;
+      }
+    }
+  } else if (!menu_open_state() && event->type == SDL_MOUSEBUTTONDOWN) {
+    const int key = -static_cast<int>(event->button.button);
+    for (bind_entry& entry : entries()) {
+      if (entry.enabled && entry.condition == bind_condition::key && entry.key == key) {
         entry.press_pending = true;
       }
     }

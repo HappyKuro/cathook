@@ -280,7 +280,10 @@ bool supply_goal_still_needed(goal_type type, Player* localplayer)
 
 bool map_has_cp_or_pl_prefix(const std::string& map_name)
 {
-  return map_name.starts_with("cp_") || map_name.starts_with("pl_") || map_name.starts_with("plr_");
+  return map_name.starts_with("cp_")
+    || map_name.starts_with("pl_")
+    || map_name.starts_with("plr_")
+    || map_name.starts_with("koth_");
 }
 
 navbot_weapon_slot weapon_slot_for_type(int type_id, tf_class class_type)
@@ -1426,6 +1429,11 @@ bool navbot_controller::record_crumb_failure(const follower_tick_result& follow_
 
 int navbot_controller::current_captured_point_index() const
 {
+  if (mesh_.map_name().starts_with("koth_"))
+  {
+    return -1;
+  }
+
   if (last_captured_point_index_ >= 0)
   {
     return last_captured_point_index_;
@@ -1929,6 +1937,15 @@ void navbot_controller::on_game_event(GameEvent* event)
   if (std::strcmp(name, "teamplay_point_captured") == 0)
   {
     last_captured_point_index_ = event->get_int("cp", -1);
+
+    // Capturing invalidates the destination we were standing on. Keeping the
+    // old capture goal alive causes the follower to rebuild a path to the
+    // already-owned point, where it can remain indefinitely.
+    active_goal_ = {};
+    next_goal_refresh_time_ = 0.0f;
+    next_goal_retry_time_ = 0.0f;
+    next_path_request_time_ = global_vars != nullptr ? global_vars->curtime : 0.0f;
+    invalidate_active_path(true);
   }
 
   if (std::strcmp(name, "mvm_wave_spawn") == 0

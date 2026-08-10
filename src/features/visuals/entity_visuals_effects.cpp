@@ -34,6 +34,20 @@ int resource_width = 0;
 int resource_height = 0;
 bool resources_ready = false;
 
+constexpr float glow_scale_max = 10.0f;
+
+[[nodiscard]] float normalized_glow_scale(const float scale)
+{
+  const float normalized = std::clamp(scale / glow_scale_max, 0.0f, 1.0f);
+  return normalized * normalized;
+}
+
+[[nodiscard]] int stencil_radius(const int scale)
+{
+  const float normalized = normalized_glow_scale(static_cast<float>(scale));
+  return std::clamp(static_cast<int>(std::ceil(normalized * glow_scale_max)), 0, static_cast<int>(glow_scale_max));
+}
+
 class render_context_scope final {
 public:
   explicit render_context_scope(MaterialSystem* material_system)
@@ -332,7 +346,7 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
   context->pop_render_target_and_viewport();
 
   if (batch.settings.blur > 0.0f) {
-    if (bloom_amount != nullptr) bloom_amount->set_float_value(batch.settings.blur);
+    if (bloom_amount != nullptr) bloom_amount->set_float_value(normalized_glow_scale(batch.settings.blur));
     context->push_render_target_and_viewport();
     context->viewport(0, 0, width, height);
     context->set_render_target(render_buffer_1);
@@ -358,18 +372,17 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
   auto draw_halo = [context, width, height](const int x, const int y) {
     context->draw_screen_space_rectangle(mat_halo, x, y, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
   };
-  if (batch.settings.stencil > 0) {
-    const int side = (batch.settings.stencil + 1) / 2;
-    draw_halo(-side, 0);
-    draw_halo(side, 0);
-    draw_halo(0, -side);
-    draw_halo(0, side);
-    const int corner = batch.settings.stencil / 2;
-    if (corner > 0) {
-      draw_halo(-corner, -corner);
-      draw_halo(corner, corner);
-      draw_halo(corner, -corner);
-      draw_halo(-corner, corner);
+  const int radius = stencil_radius(batch.settings.stencil);
+  for (int offset = 1; offset <= radius; ++offset) {
+    draw_halo(-offset, 0);
+    draw_halo(offset, 0);
+    draw_halo(0, -offset);
+    draw_halo(0, offset);
+    if (offset > 1) {
+      draw_halo(-offset, -offset);
+      draw_halo(offset, offset);
+      draw_halo(offset, -offset);
+      draw_halo(-offset, offset);
     }
   }
   if (batch.settings.blur > 0.0f) draw_halo(0, 0);
