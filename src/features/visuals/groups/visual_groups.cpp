@@ -979,6 +979,10 @@ bool groups_need_screen_overlay()
 
 bool groups_need_model_effects()
 {
+  if (nographics::is_enabled()) {
+    return false;
+  }
+
   return snapshot_or_config_capability([](const visual_group_snapshot& snapshot) {
     return snapshot.need_model_effects;
   });

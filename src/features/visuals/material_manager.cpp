@@ -55,12 +55,13 @@ std::string normalize_vmt(std::string vmt) {
 }
 
 Material* material_manager::create_material(const std::string& name, const std::string& vmt) {
-  if (key_values_constructor_original == nullptr || key_values_load_from_buffer_original == nullptr || material_system == nullptr) {
+  if (key_values_system_original == nullptr || key_values_constructor_original == nullptr ||
+      key_values_load_from_buffer_original == nullptr || key_values_delete_this_original == nullptr || material_system == nullptr) {
     return nullptr;
   }
   auto* key_values = new KeyValues{name.c_str()};
   if (!key_values->load_from_buffer(name.c_str(), vmt.c_str())) {
-    delete key_values;
+    key_values->delete_this();
     return nullptr;
   }
   return material_system->create_material(name.c_str(), key_values);

@@ -158,6 +158,7 @@ void retire_resources()
 
 bool ensure_resources()
 {
+  if (nographics::is_enabled()) return false;
   if (engine == nullptr || material_system == nullptr || !engine->is_in_game() || engine->is_drawing_loading_image()) return false;
   const Vec2 screen = engine->get_screen_size();
   if (screen.x <= 0 || screen.y <= 0) {
@@ -368,11 +369,16 @@ void draw_backtrack_effects(void* instance, const DrawModelState& state, const M
 void on_render_start()
 {
   glow_batches.clear();
+  if (nographics::is_enabled()) return;
   if (visual_groups::groups_need_model_effects()) ensure_resources();
 }
 
 void on_render_end()
 {
+  if (nographics::is_enabled()) {
+    glow_batches.clear();
+    return;
+  }
   if (glow_batches.empty() || !ensure_resources() || engine == nullptr || model_render == nullptr || render_view == nullptr) {
     glow_batches.clear();
     return;
@@ -401,6 +407,10 @@ void on_render_end()
 void on_draw_model_execute(void* instance, const DrawModelState& state, const ModelRenderInfo& info, matrix_3x4* bones)
 {
   if (draw_model_execute_original == nullptr) return;
+  if (nographics::is_enabled()) {
+    call_original(instance, state, info, bones);
+    return;
+  }
   if (rendering_effect || model_render == nullptr || !materials.loaded() || entity_list == nullptr ||
       engine == nullptr || engine->is_drawing_loading_image()) {
     call_original(instance, state, info, bones);

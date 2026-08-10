@@ -57,6 +57,8 @@ constexpr const char* key_values_set_int =
   "55 48 89 E5 53 89 D3 BA ? ? ? ? 48 83 EC ? E8 ? ? ? ? 48 85 C0 74 ? 89 58";
 constexpr const char* key_values_load_from_buffer =
   "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC ? ? ? ? 48 85 D2 48 89 BD";
+constexpr const char* key_values_delete_this =
+  "48 85 FF 74 3B 55 48 89 E5 41 54 49 89 FC 48 83 EC 08 E8 ? ? ? ? 41 80 7C 24 23 00 74 ? 4C 89 E7 E8 ? ? ? ? E8 ? ? ? ? 4C 89 E6";
 constexpr const char* random_seed =
   "48 8D 05 ? ? ? ? BA ? ? ? ? 89 10";
 
