@@ -23,6 +23,8 @@ V  o o  V  file: src/core/commands.hpp
 #include <string_view>
 #include <vector>
 #include "core/config/config_store.hpp"
+#include "core/config/developer_console_config.hpp"
+#include "core/console_print.hpp"
 #include "core/detach.hpp"
 #include "core/player_manager.hpp"
 #include "core/print.hpp"
@@ -149,7 +151,7 @@ inline bool write_cfg_file_if_missing(const char* file_name, const char* default
   std::filesystem::create_directories(cfg_path.parent_path(), error);
   if (error)
   {
-    print("[cat_exec] failed to create cfg directory '%s': %s\n",
+    console_print("[cat_exec] failed to create cfg directory '%s': %s\n",
       cfg_path.parent_path().string().c_str(),
       error.message().c_str());
     return false;
@@ -158,7 +160,7 @@ inline bool write_cfg_file_if_missing(const char* file_name, const char* default
   std::ofstream output{ cfg_path, std::ios::out | std::ios::trunc };
   if (!output.is_open())
   {
-    print("[cat_exec] failed to create cfg '%s'\n", cfg_path.string().c_str());
+    console_print("[cat_exec] failed to create cfg '%s'\n", cfg_path.string().c_str());
     return false;
   }
 
@@ -195,13 +197,13 @@ inline void execute_client_command(const char* command_name, const char* command
 {
   if (engine == nullptr)
   {
-    print("[%s] engine unavailable\n", command_name);
+    console_print("[%s] engine unavailable\n", command_name);
     return;
   }
 
   if (command_text == nullptr || command_text[0] == '\0')
   {
-    print("[%s] empty command\n", command_name);
+    console_print("[%s] empty command\n", command_name);
     return;
   }
 
@@ -266,14 +268,14 @@ inline std::string_view read_config_name_arg(const command_args& args, const cha
 {
   if (args.argc() < 2)
   {
-    print("[%s] usage: %s <name>\n", command_name, command_name);
+    console_print("[%s] usage: %s <name>\n", command_name, command_name);
     return {};
   }
 
   const std::string_view name{args.argv(1)};
   if (!is_valid_config_name(name))
   {
-    print("[%s] invalid config name '%s' (use letters, numbers, '_' or '-')\n", command_name, args.argv(1));
+    console_print("[%s] invalid config name '%s' (use letters, numbers, '_' or '-')\n", command_name, args.argv(1));
     return {};
   }
 
@@ -291,20 +293,20 @@ inline void command_load_callback(const command_args& args)
   auto* store = get_config_store();
   if (store == nullptr)
   {
-    print("[cat_load] config store unavailable\n");
+    console_print("[cat_load] config store unavailable\n");
     return;
   }
 
   if (!store->load_file(name))
   {
-    print("[cat_load] failed to load config '%s'\n", args.argv(1));
+    console_print("[cat_load] failed to load config '%s'\n", args.argv(1));
     return;
   }
 
   store->export_config(::config);
   reset_insider_settings_session(::config);
   cat_bind::load(store);
-  print("[cat_load] loaded config '%s'\n", args.argv(1));
+  console_print("[cat_load] loaded config '%s'\n", args.argv(1));
 }
 
 inline void command_save_callback(const command_args& args)
@@ -318,24 +320,241 @@ inline void command_save_callback(const command_args& args)
   auto* store = get_config_store();
   if (store == nullptr)
   {
-    print("[cat_save] config store unavailable\n");
+    console_print("[cat_save] config store unavailable\n");
     return;
   }
 
   store->import_config(::config);
   if (!store->save_file(name))
   {
-    print("[cat_save] failed to save config '%s'\n", args.argv(1));
+    console_print("[cat_save] failed to save config '%s'\n", args.argv(1));
     return;
   }
 
   if (!cat_bind::save(store, name))
   {
-    print("[cat_save] saved config '%s' but failed to save binds\n", args.argv(1));
+    console_print("[cat_save] saved config '%s' but failed to save binds\n", args.argv(1));
     return;
   }
 
-  print("[cat_save] saved config '%s'\n", args.argv(1));
+  console_print("[cat_save] saved config '%s'\n", args.argv(1));
+}
+
+struct developer_setting
+{
+  config_store* store = nullptr;
+  std::string key{};
+  std::string current{};
+  developer_console_config::value_type type = developer_console_config::value_type::text;
+};
+
+inline std::string join_command_args(const command_args& args, const int first)
+{
+  std::string value{};
+  for (int index = first; index < args.argc(); ++index)
+  {
+    if (!value.empty()) value.push_back(' ');
+    value += args.argv(index);
+  }
+  return value;
+}
+
+inline std::optional<developer_setting> resolve_developer_setting(
+  const char* command_name, std::string_view requested)
+{
+  auto* store = get_config_store();
+  if (store == nullptr)
+  {
+    console_print("[%s] config store unavailable\n", command_name);
+    return std::nullopt;
+  }
+
+  const auto keys = developer_console_config::setting_keys(*store, ::config);
+  const std::string wanted{ requested };
+
+  const auto make_setting = [&](const std::string& key) -> developer_setting
+  {
+    const std::string current = store->get_string(key, "");
+    return developer_setting{
+      store,
+      key,
+      current,
+      developer_console_config::classify(key, current),
+    };
+  };
+
+  if (store->has_key(wanted))
+  {
+    return make_setting(wanted);
+  }
+
+  const std::string lowered = developer_console_config::lower(wanted);
+  std::vector<std::string> suffix_matches{};
+  for (const auto& key : keys)
+  {
+    const std::string lowered_key = developer_console_config::lower(key);
+    if (lowered_key == lowered)
+    {
+      return make_setting(key);
+    }
+
+    if (lowered_key.size() > lowered.size() && lowered_key.ends_with(lowered) &&
+        lowered_key[lowered_key.size() - lowered.size() - 1] == '.')
+    {
+      suffix_matches.emplace_back(key);
+    }
+  }
+
+  if (suffix_matches.size() == 1)
+  {
+    return make_setting(suffix_matches.front());
+  }
+
+  if (suffix_matches.empty())
+  {
+    console_print("[%s] no setting named '%s'; use cat_config_list to inspect settings\n",
+      command_name, wanted.c_str());
+    return std::nullopt;
+  }
+
+  console_print("[%s] '%s' is ambiguous; matching settings:\n", command_name, wanted.c_str());
+  for (const auto& key : suffix_matches)
+  {
+    console_print("[%s]   %s\n", command_name, key.c_str());
+  }
+  return std::nullopt;
+}
+
+inline void print_developer_setting(const char* command_name, const developer_setting& setting)
+{
+  console_print("[%s] %s = %s (%s)\n", command_name, setting.key.c_str(), setting.current.c_str(),
+    developer_console_config::value_type_name(setting.type));
+}
+
+inline bool apply_developer_setting(const char* command_name, const developer_setting& setting,
+  std::string_view input)
+{
+  if (!developer_console_config::write_value(*setting.store, setting.key, setting.type, input))
+  {
+    console_print("[%s] invalid value '%s' for %s; expected %s\n", command_name,
+      std::string{ input }.c_str(), setting.key.c_str(),
+      developer_console_config::accepted_input(setting.type));
+    return false;
+  }
+
+  setting.store->export_config(::config);
+  reset_insider_settings_session(::config);
+
+  setting.store->import_config(::config);
+  const std::string effective = setting.store->get_string(setting.key, "");
+  console_print("[%s] %s = %s%s\n", command_name, setting.key.c_str(), effective.c_str(),
+    effective == setting.current ? " (unchanged)" : "");
+  return true;
+}
+
+inline void command_config_get_callback(const command_args& args)
+{
+  const char* command_name = command_invocation_name(args, "cat_config_get");
+  if (args.argc() < 2)
+  {
+    console_print("[%s] usage: %s <setting>\n", command_name, command_name);
+    return;
+  }
+
+  if (const auto setting = resolve_developer_setting(command_name, args.argv(1)); setting.has_value())
+  {
+    print_developer_setting(command_name, *setting);
+  }
+}
+
+inline void command_config_set_callback(const command_args& args)
+{
+  const char* command_name = command_invocation_name(args, "cat_config_set");
+  if (args.argc() < 2)
+  {
+    console_print("[%s] usage: %s <setting> <value>\n", command_name, command_name);
+    return;
+  }
+
+  const auto setting = resolve_developer_setting(command_name, args.argv(1));
+  if (!setting.has_value()) return;
+  if (args.argc() < 3)
+  {
+    print_developer_setting(command_name, *setting);
+    console_print("[%s] accepts %s\n", command_name,
+      developer_console_config::accepted_input(setting->type));
+    return;
+  }
+
+  apply_developer_setting(command_name, *setting, join_command_args(args, 2));
+}
+
+inline void command_config_toggle_callback(const command_args& args)
+{
+  const char* command_name = command_invocation_name(args, "cat_config_toggle");
+  if (args.argc() < 2)
+  {
+    console_print("[%s] usage: %s <setting>\n", command_name, command_name);
+    return;
+  }
+
+  const auto setting = resolve_developer_setting(command_name, args.argv(1));
+  if (!setting.has_value()) return;
+  if (setting->type != developer_console_config::value_type::boolean)
+  {
+    console_print("[%s] %s is not a boolean setting; use cat_config_set\n", command_name,
+      setting->key.c_str());
+    return;
+  }
+
+  apply_developer_setting(command_name, *setting, setting->current == "true" ? "false" : "true");
+}
+
+inline void command_config_reset_callback(const command_args& args)
+{
+  const char* command_name = command_invocation_name(args, "cat_config_reset");
+  if (args.argc() < 2)
+  {
+    console_print("[%s] usage: %s <setting>\n", command_name, command_name);
+    return;
+  }
+
+  const auto setting = resolve_developer_setting(command_name, args.argv(1));
+  if (!setting.has_value()) return;
+
+  const auto fallback = developer_console_config::default_value(*setting->store, setting->key);
+  if (!fallback.has_value())
+  {
+    console_print("[%s] no default exists for %s\n", command_name, setting->key.c_str());
+    return;
+  }
+  apply_developer_setting(command_name, *setting, *fallback);
+}
+
+inline void command_config_list_callback(const command_args& args)
+{
+  const char* command_name = command_invocation_name(args, "cat_config_list");
+  auto* store = get_config_store();
+  if (store == nullptr)
+  {
+    console_print("[%s] config store unavailable\n", command_name);
+    return;
+  }
+
+  const auto keys = developer_console_config::setting_keys(*store, ::config);
+  const std::string filter = developer_console_config::lower(join_command_args(args, 1));
+  int shown = 0;
+  for (const auto& key : keys)
+  {
+    if (!filter.empty() && developer_console_config::lower(key).find(filter) == std::string::npos)
+    {
+      continue;
+    }
+    console_print("[%s] %s = %s\n", command_name, key.c_str(), store->get_string(key, "").c_str());
+    ++shown;
+  }
+
+  console_print("[%s] %d/%zu settings shown\n", command_name, shown, keys.size());
 }
 
 enum class achievement_change
@@ -369,26 +588,26 @@ inline void change_all_achievements(const achievement_change change, const char*
   auto* manager = resolve_achievement_manager();
   if (manager == nullptr)
   {
-    print("[%s] achievement manager unavailable\n", command_name);
+    console_print("[%s] achievement manager unavailable\n", command_name);
     return;
   }
 
   auto* stats = resolve_steam_user_stats();
   if (stats == nullptr)
   {
-    print("[%s] Steam user stats unavailable\n", command_name);
+    console_print("[%s] Steam user stats unavailable\n", command_name);
     return;
   }
 
   if (!stats->request_current_stats())
   {
-    print("[%s] RequestCurrentStats failed; trying achievement write anyway\n", command_name);
+    console_print("[%s] RequestCurrentStats failed; trying achievement write anyway\n", command_name);
   }
 
   const auto achievement_count = manager->get_achievement_count();
   if (achievement_count <= 0)
   {
-    print("[%s] no achievements found\n", command_name);
+    console_print("[%s] no achievements found\n", command_name);
     return;
   }
 
@@ -432,16 +651,16 @@ inline void change_all_achievements(const achievement_change change, const char*
   stats->request_current_stats();
 
   const auto* action_name = change == achievement_change::unlock ? "unlocked" : "locked";
-  print("[%s] %s %d/%d achievements", command_name, action_name, processed_count, achievement_count);
+  console_print("[%s] %s %d/%d achievements", command_name, action_name, processed_count, achievement_count);
   if (failed_count > 0)
   {
-    print(" (%d failed)", failed_count);
+    console_print(" (%d failed)", failed_count);
   }
   if (!stored)
   {
-    print(" (StoreStats failed)");
+    console_print(" (StoreStats failed)");
   }
-  print("\n");
+  console_print("\n");
 }
 
 inline void command_unlock_achievements_callback(const command_args&)
@@ -458,7 +677,7 @@ inline std::optional<int> read_int_arg(const command_args& args, const char* com
 {
   if (args.argc() <= index)
   {
-    print("[%s] usage: %s <%s>\n", command_name, command_name, label);
+    console_print("[%s] usage: %s <%s>\n", command_name, command_name, label);
     return std::nullopt;
   }
 
@@ -467,7 +686,7 @@ inline std::optional<int> read_int_arg(const command_args& args, const char* com
   const auto result = std::from_chars(value.data(), value.data() + value.size(), parsed);
   if (result.ec != std::errc{} || result.ptr != value.data() + value.size())
   {
-    print("[%s] invalid %s '%s'\n", command_name, label, args.argv(index));
+    console_print("[%s] invalid %s '%s'\n", command_name, label, args.argv(index));
     return std::nullopt;
   }
 
@@ -491,7 +710,7 @@ inline void command_medal_flip_callback(const command_args& args)
     config.visuals.casual_medal.guaranteed_flip = !config.visuals.casual_medal.guaranteed_flip;
   }
 
-  print("[%s] guaranteed Casual medal flip %s\n", command_name,
+  console_print("[%s] guaranteed Casual medal flip %s\n", command_name,
     config.visuals.casual_medal.guaranteed_flip ? "enabled" : "disabled");
 }
 
@@ -507,13 +726,13 @@ inline void command_medal_changer_callback(const command_args& args)
   if (*rank == 0)
   {
     config.visuals.casual_medal.changer = false;
-    print("[%s] Casual medal changer disabled\n", command_name);
+    console_print("[%s] Casual medal changer disabled\n", command_name);
     return;
   }
 
   config.visuals.casual_medal.rank = std::clamp(*rank, 1, 1200);
   config.visuals.casual_medal.changer = true;
-  print("[%s] Casual medal display set to rank %d\n", command_name, config.visuals.casual_medal.rank);
+  console_print("[%s] Casual medal display set to rank %d\n", command_name, config.visuals.casual_medal.rank);
 }
 
 inline const char* command_invocation_name(const command_args& args, const char* fallback)
@@ -533,11 +752,11 @@ inline void command_unlock_achievement_callback(const command_args& args)
 
   if (!autoitem::unlock_achievement_by_id(*achievement_id))
   {
-    print("[%s] failed to unlock achievement %d\n", command_name, *achievement_id);
+    console_print("[%s] failed to unlock achievement %d\n", command_name, *achievement_id);
     return;
   }
 
-  print("[%s] unlocked achievement %d\n", command_name, *achievement_id);
+  console_print("[%s] unlocked achievement %d\n", command_name, *achievement_id);
 }
 
 inline void command_lock_achievement_callback(const command_args& args)
@@ -551,11 +770,11 @@ inline void command_lock_achievement_callback(const command_args& args)
 
   if (!autoitem::lock_achievement_by_id(*achievement_id))
   {
-    print("[%s] failed to lock achievement %d\n", command_name, *achievement_id);
+    console_print("[%s] failed to lock achievement %d\n", command_name, *achievement_id);
     return;
   }
 
-  print("[%s] locked achievement %d\n", command_name, *achievement_id);
+  console_print("[%s] locked achievement %d\n", command_name, *achievement_id);
 }
 
 inline void command_autoitem_rent_callback(const command_args& args)
@@ -569,11 +788,11 @@ inline void command_autoitem_rent_callback(const command_args& args)
 
   if (!autoitem::rent_item(*item_def_id))
   {
-    print("[%s] failed to request item preview for item def %d\n", command_name, *item_def_id);
+    console_print("[%s] failed to request item preview for item def %d\n", command_name, *item_def_id);
     return;
   }
 
-  print("[%s] requested item preview for item def %d\n", command_name, *item_def_id);
+  console_print("[%s] requested item preview for item def %d\n", command_name, *item_def_id);
 }
 
 inline void command_autoitem_craft_callback(const command_args& args)
@@ -581,7 +800,7 @@ inline void command_autoitem_craft_callback(const command_args& args)
   const char* command_name = command_invocation_name(args, "cat_autoitem_craft");
   if (args.argc() < 2)
   {
-    print("[%s] usage: %s <item_def_id> [item_def_id...]\n", command_name, command_name);
+    console_print("[%s] usage: %s <item_def_id> [item_def_id...]\n", command_name, command_name);
     return;
   }
 
@@ -599,11 +818,11 @@ inline void command_autoitem_craft_callback(const command_args& args)
 
   if (!autoitem::craft_items(item_def_ids))
   {
-    print("[%s] failed to craft with %d item defs\n", command_name, static_cast<int>(item_def_ids.size()));
+    console_print("[%s] failed to craft with %d item defs\n", command_name, static_cast<int>(item_def_ids.size()));
     return;
   }
 
-  print("[%s] sent craft request with %d item defs\n", command_name, static_cast<int>(item_def_ids.size()));
+  console_print("[%s] sent craft request with %d item defs\n", command_name, static_cast<int>(item_def_ids.size()));
 }
 
 inline void command_dump_achievements_callback(const command_args& args)
@@ -612,65 +831,65 @@ inline void command_dump_achievements_callback(const command_args& args)
   const char* path = args.argc() >= 2 ? args.argv(1) : "/tmp/cathook_achievements.txt";
   if (!autoitem::dump_achievements(path))
   {
-    print("[%s] failed to dump achievements to %s\n", command_name, path);
+    console_print("[%s] failed to dump achievements to %s\n", command_name, path);
     return;
   }
 
-  print("[%s] dumped achievements to %s\n", command_name, path);
+  console_print("[%s] dumped achievements to %s\n", command_name, path);
 }
 
 inline void command_queue_callback(const command_args&)
 {
   if (!automation::request_casual_queue())
   {
-    print("[cat_queue] matchmaking API unavailable\n");
+    console_print("[cat_queue] matchmaking API unavailable\n");
     return;
   }
 
-  print("[cat_queue] requested casual matchmaking queue\n");
+  console_print("[cat_queue] requested casual matchmaking queue\n");
 }
 
 inline void command_cancel_queue_callback(const command_args&)
 {
   if (!automation::cancel_casual_queue())
   {
-    print("[cat_cancelqueue] matchmaking API unavailable\n");
+    console_print("[cat_cancelqueue] matchmaking API unavailable\n");
     return;
   }
 
-  print("[cat_cancelqueue] requested casual matchmaking queue cancel\n");
+  console_print("[cat_cancelqueue] requested casual matchmaking queue cancel\n");
 }
 
 inline void command_abandon_callback(const command_args&)
 {
   if (!automation::abandon_current_match())
   {
-    print("[cat_abandon] matchmaking client unavailable or no active match\n");
+    console_print("[cat_abandon] matchmaking client unavailable or no active match\n");
     return;
   }
 
-  print("[cat_abandon] requested match abandon\n");
+  console_print("[cat_abandon] requested match abandon\n");
 }
 
 inline void command_criteria_callback(const command_args&)
 {
   if (!automation::reload_casual_criteria())
   {
-    print("[cat_criteria] casual criteria API unavailable\n");
+    console_print("[cat_criteria] casual criteria API unavailable\n");
     return;
   }
 
-  print("[cat_criteria] reloaded casual criteria\n");
+  console_print("[cat_criteria] reloaded casual criteria\n");
 }
 
 inline void command_commands_callback(const command_args&)
 {
-  print("[cat_commands] %d registered commands\n", static_cast<int>(registered_commands().size()));
+  console_print("[cat_commands] %d registered commands\n", static_cast<int>(registered_commands().size()));
   for (const auto& command_entry : registered_commands())
   {
     if (command_entry != nullptr)
     {
-      print("  %s%s\n", command_entry->get_name(), command_entry->is_registered() ? "" : " (not registered)");
+      console_print("  %s%s\n", command_entry->get_name(), command_entry->is_registered() ? "" : " (not registered)");
     }
   }
 }
@@ -712,7 +931,7 @@ inline std::optional<resolved_player_arg> resolve_player_arg(const command_args&
 {
   if (args.argc() <= index)
   {
-    print("[%s] usage: %s <steamid32|steamid64|#userid|name>\n", command_name, command_name);
+    console_print("[%s] usage: %s <steamid32|steamid64|#userid|name>\n", command_name, command_name);
     return std::nullopt;
   }
 
@@ -744,7 +963,7 @@ inline std::optional<resolved_player_arg> resolve_player_arg(const command_args&
 
   if (engine == nullptr)
   {
-    print("[%s] engine unavailable; use a steamid32/steamid64\n", command_name);
+    console_print("[%s] engine unavailable; use a steamid32/steamid64\n", command_name);
     return std::nullopt;
   }
 
@@ -766,7 +985,7 @@ inline std::optional<resolved_player_arg> resolve_player_arg(const command_args&
 
     if (match)
     {
-      print("[%s] player name '%s' is ambiguous; use steamid32 or #userid\n", command_name, args.argv(index));
+      console_print("[%s] player name '%s' is ambiguous; use steamid32 or #userid\n", command_name, args.argv(index));
       return std::nullopt;
     }
 
@@ -775,7 +994,7 @@ inline std::optional<resolved_player_arg> resolve_player_arg(const command_args&
 
   if (!match)
   {
-    print("[%s] player '%s' not found; use steamid32/steamid64 if they are not connected\n", command_name, args.argv(index));
+    console_print("[%s] player '%s' not found; use steamid32/steamid64 if they are not connected\n", command_name, args.argv(index));
     return std::nullopt;
   }
 
@@ -787,11 +1006,11 @@ inline void command_playerlist_load_callback(const command_args& args)
   const char* command_name = command_invocation_name(args, "cat_playerlist_load");
   if (!players::load())
   {
-    print("[%s] no saved player list found\n", command_name);
+    console_print("[%s] no saved player list found\n", command_name);
     return;
   }
 
-  print("[%s] loaded player list\n", command_name);
+  console_print("[%s] loaded player list\n", command_name);
 }
 
 inline void command_playerlist_save_callback(const command_args& args)
@@ -799,11 +1018,11 @@ inline void command_playerlist_save_callback(const command_args& args)
   const char* command_name = command_invocation_name(args, "cat_playerlist_save");
   if (!players::save())
   {
-    print("[%s] failed to save player list\n", command_name);
+    console_print("[%s] failed to save player list\n", command_name);
     return;
   }
 
-  print("[%s] saved player list\n", command_name);
+  console_print("[%s] saved player list\n", command_name);
 }
 
 inline void command_playerlist_print_callback(const command_args& args)
@@ -811,10 +1030,10 @@ inline void command_playerlist_print_callback(const command_args& args)
   const char* command_name = command_invocation_name(args, "cat_playerlist_print");
   const bool include_runtime = args.argc() >= 2 && (std::string_view{args.argv(1)} == "all" || std::string_view{args.argv(1)} == "1");
   const auto entries = players::entries(include_runtime);
-  print("[%s] %d player entries%s\n", command_name, static_cast<int>(entries.size()), include_runtime ? " including runtime" : "");
+  console_print("[%s] %d player entries%s\n", command_name, static_cast<int>(entries.size()), include_runtime ? " including runtime" : "");
   for (const auto& entry : entries)
   {
-    print("  %u -> %s%s%s%s roles=",
+    console_print("  %u -> %s%s%s%s roles=",
       entry.account_id,
       players::state_name(entry.state),
       entry.runtime ? " runtime" : "",
@@ -822,10 +1041,10 @@ inline void command_playerlist_print_callback(const command_args& args)
       entry.name.c_str());
     for (std::size_t index = 0; index < entry.roles.size(); ++index)
     {
-      if (index != 0) print(",");
-      print("%s", players::role_name(entry.roles[index]));
+      if (index != 0) console_print(",");
+      console_print("%s", players::role_name(entry.roles[index]));
     }
-    print("\n");
+    console_print("\n");
   }
 }
 
@@ -840,11 +1059,11 @@ inline void command_playerlist_clear_callback(const command_args& args)
 
   if (!players::clear_state(player->account_id))
   {
-    print("[%s] failed to clear %u\n", command_name, player->account_id);
+    console_print("[%s] failed to clear %u\n", command_name, player->account_id);
     return;
   }
 
-  print("[%s] cleared %u\n", command_name, player->account_id);
+  console_print("[%s] cleared %u\n", command_name, player->account_id);
 }
 
 inline void command_playerlist_info_callback(const command_args& args)
@@ -857,7 +1076,7 @@ inline void command_playerlist_info_callback(const command_args& args)
   }
 
   const auto state = players::state_for(player->account_id);
-  print("[%s] %u state=%s friendly=%d ignored=%d prioritized=%d roles=",
+  console_print("[%s] %u state=%s friendly=%d ignored=%d prioritized=%d roles=",
     command_name,
     player->account_id,
     players::state_name(state),
@@ -866,9 +1085,9 @@ inline void command_playerlist_info_callback(const command_args& args)
     players::is_prioritized(player->account_id) ? 1 : 0);
   for (const auto role : players::roles_for(player->account_id))
   {
-    print(" %s", players::role_name(role));
+    console_print(" %s", players::role_name(role));
   }
-  print("\n");
+  console_print("\n");
 }
 
 inline void command_setrole_callback(const command_args& args)
@@ -882,7 +1101,7 @@ inline void command_setrole_callback(const command_args& args)
 
   if (args.argc() < 3)
   {
-    print("[%s] usage: %s <player> <default|friend|ignored|cheater|party|f2p|cat>\n", command_name, command_name);
+    console_print("[%s] usage: %s <player> <default|friend|ignored|cheater|party|f2p|cat>\n", command_name, command_name);
     return;
   }
 
@@ -891,7 +1110,7 @@ inline void command_setrole_callback(const command_args& args)
   const auto role = players::parse_role(role_name);
   if (!role)
   {
-    print("[%s] unknown role '%s'; valid: default friend ignored cheater party f2p cat\n", command_name, args.argv(2));
+    console_print("[%s] unknown role '%s'; valid: default friend ignored cheater party f2p cat\n", command_name, args.argv(2));
     return;
   }
 
@@ -899,27 +1118,27 @@ inline void command_setrole_callback(const command_args& args)
   {
     if (!players::clear_state(player->account_id))
     {
-      print("[%s] failed to clear %u\n", command_name, player->account_id);
+      console_print("[%s] failed to clear %u\n", command_name, player->account_id);
       return;
     }
-    print("[%s] cleared %u\n", command_name, player->account_id);
+    console_print("[%s] cleared %u\n", command_name, player->account_id);
     return;
   }
 
   const auto definition = std::ranges::find(players::role_definitions(), *role, &players::role_definition::id);
   if (definition == players::role_definitions().end() || !definition->assignable || definition->runtime)
   {
-    print("[%s] '%s' is not manually assignable\n", command_name, args.argv(2));
+    console_print("[%s] '%s' is not manually assignable\n", command_name, args.argv(2));
     return;
   }
 
   if (!players::set_role(player->account_id, *role, player->name))
   {
-    print("[%s] failed to set %u\n", command_name, player->account_id);
+    console_print("[%s] failed to set %u\n", command_name, player->account_id);
     return;
   }
 
-  print("[%s] set %u to %s\n", command_name, player->account_id, players::role_name(*role));
+  console_print("[%s] set %u to %s\n", command_name, player->account_id, players::role_name(*role));
 }
 
 inline void add_command(const char* name, command_callback_t callback, const char* help)
@@ -967,6 +1186,11 @@ inline void register_commands() {
   add_command("cat_setrole", command_setrole_callback, "Set a player role: default friend ignored cheater party f2p cat");
   add_command("cat_playerlist_clear", command_playerlist_clear_callback, "Clear a player list state");
   add_command("cat_playerlist_info", command_playerlist_info_callback, "Show one player list entry");
+  add_command("cat_config_get", command_config_get_callback, "Read a cathook config setting");
+  add_command("cat_config_set", command_config_set_callback, "Set a cathook config setting");
+  add_command("cat_config_toggle", command_config_toggle_callback, "Toggle a boolean cathook config setting");
+  add_command("cat_config_reset", command_config_reset_callback, "Reset a cathook config setting to its default");
+  add_command("cat_config_list", command_config_list_callback, "List cathook config settings");
   commands_registered() = true;
 }
 

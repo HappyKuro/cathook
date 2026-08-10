@@ -34,6 +34,7 @@ public:
     bool delete_file(std::string_view name);
 
     [[nodiscard]] std::vector<std::string> list_files() const;
+    [[nodiscard]] std::vector<std::string> keys() const;
     [[nodiscard]] const std::string& current_name() const;
     [[nodiscard]] config_store scoped_store(std::filesystem::path config_subdirectory) const;
 

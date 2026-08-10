@@ -21,6 +21,7 @@ V  o o  V  file: src/features/menu/menu.hpp
 #include "features/automation/region_selector/region_selector.hpp"
 #include "features/visuals/material_manager.hpp"
 #include "features/visuals/groups/visual_groups.hpp"
+#include "features/visuals/skybox_changer.hpp"
 #include "mono/mono.hpp"
 #include "mono/icon_definitions.hpp"
 #include "mono/material_icons.hpp"
@@ -1752,7 +1753,9 @@ static void draw_visual_groups_content_tfwin() {
 
 static void draw_visuals_world_content() {
   cat_menu::begin_flow_layout("visuals_world_layout", 2);
-  cat_menu::flow_panel("World", 0, 300.0f, [&]() {
+  cat_menu::flow_panel("World", 0, 324.0f, [&]() {
+    cat_menu::combo("Skybox", &config.visuals.skybox_changer_index,
+                    skybox_changer::option_names(), skybox_changer::option_count());
     cat_menu::checkbox("Thirdperson", &config.visuals.thirdperson.enabled);
     cat_menu::checkbox("Thirdperson crosshair", &config.visuals.thirdperson.crosshair);
     cat_menu::checkbox("Thirdperson collision", &config.visuals.thirdperson.collision);

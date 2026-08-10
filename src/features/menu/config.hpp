@@ -551,6 +551,8 @@ struct Visuals {
     int range_rings = 2;
   } radar;
 
+  int skybox_changer_index = 0;
+
   bool override_fov = false;
   float custom_fov = 90;
 
