@@ -106,8 +106,8 @@ public:
   auto write_to_buffer(bf_write& buffer) -> bool override {
     buffer.write_u_bit_long(get_type(), netmsg_type_bits);
     length = data_out.get_num_bits_written();
-    buffer.write_u_bit_long(static_cast<std::uint32_t>(backup_commands), num_backup_command_bits);
     buffer.write_u_bit_long(static_cast<std::uint32_t>(new_commands), num_new_command_bits);
+    buffer.write_u_bit_long(static_cast<std::uint32_t>(backup_commands), num_backup_command_bits);
     buffer.write_word(length);
     return buffer.write_bits(data_out.get_data(), length);
   }
@@ -141,6 +141,8 @@ public:
   std::array<std::uint8_t, 8> reserved{};
 };
 
+static_assert(sizeof(clc_move_message) == 0x78, "clc_move_message size mismatch");
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winvalid-offsetof"
@@ -173,6 +175,10 @@ public:
 
   auto get_type() const -> int override {
     return net_tick;
+  }
+
+  auto get_size() const -> std::size_t override {
+    return sizeof(*this);
   }
 
   auto get_name() const -> const char* override {

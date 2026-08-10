@@ -110,14 +110,8 @@ bool bind_base_texture(Material* material, Texture* texture)
   return true;
 }
 
-void release_resources()
+void reset_resource_handles()
 {
-  if (mat_glow_color != nullptr) mat_glow_color->decrement_reference_count();
-  if (mat_halo != nullptr) mat_halo->decrement_reference_count();
-  if (mat_blur_x != nullptr) mat_blur_x->decrement_reference_count();
-  if (mat_blur_y != nullptr) mat_blur_y->decrement_reference_count();
-  if (render_buffer_0 != nullptr) render_buffer_0->decrement_reference_count();
-  if (render_buffer_1 != nullptr) render_buffer_1->decrement_reference_count();
   mat_glow_color = nullptr;
   mat_halo = nullptr;
   mat_blur_x = nullptr;
@@ -130,12 +124,23 @@ void release_resources()
   resources_ready = false;
 }
 
+void release_resources()
+{
+  if (mat_glow_color != nullptr) mat_glow_color->decrement_reference_count();
+  if (mat_halo != nullptr) mat_halo->decrement_reference_count();
+  if (mat_blur_x != nullptr) mat_blur_x->decrement_reference_count();
+  if (mat_blur_y != nullptr) mat_blur_y->decrement_reference_count();
+  if (render_buffer_0 != nullptr) render_buffer_0->decrement_reference_count();
+  if (render_buffer_1 != nullptr) render_buffer_1->decrement_reference_count();
+  reset_resource_handles();
+}
+
 bool ensure_resources()
 {
-  if (engine == nullptr || material_system == nullptr || !engine->is_in_game()) {
-    if (resources_ready) release_resources();
-    return false;
-  }
+  // During loading and video/shader resets the material system may expose
+  // objects whose shader snapshots are not valid yet. Do not create or
+  // release our resources in that window; the engine owns reset/restore.
+  if (engine == nullptr || material_system == nullptr || !engine->is_in_game() || engine->is_drawing_loading_image()) return false;
   const Vec2 screen = engine->get_screen_size();
   if (screen.x <= 0 || screen.y <= 0) {
     if (resources_ready) release_resources();
@@ -378,7 +383,8 @@ void on_render_end()
 void on_draw_model_execute(void* instance, const DrawModelState& state, const ModelRenderInfo& info, matrix_3x4* bones)
 {
   if (draw_model_execute_original == nullptr) return;
-  if (rendering_effect || model_render == nullptr || !materials.loaded() || entity_list == nullptr) {
+  if (rendering_effect || model_render == nullptr || !materials.loaded() || entity_list == nullptr ||
+      engine == nullptr || engine->is_drawing_loading_image()) {
     call_original(instance, state, info, bones);
     return;
   }
@@ -398,11 +404,16 @@ void on_draw_model_execute(void* instance, const DrawModelState& state, const Mo
   }
 }
 
-void on_shutdown()
+void on_shutdown(const bool release_graphics_resources)
 {
   glow_batches.clear();
-  release_resources();
-  materials.shutdown();
+  if (release_graphics_resources) {
+    release_resources();
+    materials.shutdown();
+  } else {
+    reset_resource_handles();
+    materials.abandon();
+  }
 }
 
 }

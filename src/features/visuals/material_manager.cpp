@@ -17,35 +17,6 @@ std::string lower_copy(std::string value) {
   return value;
 }
 
-bool has_key(const std::string& vmt, const char* key) {
-  return lower_copy(vmt).find(lower_copy(key)) != std::string::npos;
-}
-
-bool is_vertex_lit(const std::string& vmt) {
-  const std::string lower = lower_copy(vmt);
-  const std::size_t body = lower.find('{');
-  const std::size_t shader = lower.find("vertexlitgeneric");
-  return shader != std::string::npos && (body == std::string::npos || shader < body);
-}
-
-std::string prepare_vmt(const std::string& vmt) {
-  const std::size_t insert_position = vmt.find_last_of('}');
-  if (insert_position == std::string::npos) return vmt;
-
-  if (!is_vertex_lit(vmt)) return vmt;
-
-  std::string suffix{};
-  const bool has_cloak_factor = has_key(vmt, "$cloakfactor");
-  if (!has_cloak_factor && !has_key(vmt, "$cloakpassenabled")) suffix += "\n\t$cloakpassenabled \"1\"";
-  if (!has_cloak_factor && !has_key(vmt, "proxies")) {
-    suffix += "\n\tProxies\n\t{\n\t\tinvis\n\t\t{\n\t\t}\n\t}";
-  }
-
-  std::string result = vmt;
-  result.insert(insert_position, suffix);
-  return result;
-}
-
 bool valid_name(const std::string& name) {
   if (name.empty() || name == "." || name == "..") return false;
   const std::filesystem::path path{name};
@@ -68,7 +39,9 @@ Material* material_manager::create_material(const std::string& name, const std::
     return nullptr;
   }
   auto* key_values = new KeyValues{name.c_str()};
-  if (!key_values->load_from_buffer(name.c_str(), prepare_vmt(vmt).c_str())) {
+  // Pass user VMTs through unchanged. Injecting cloak keys and an empty
+  // proxy block produces shader snapshots the engine cannot safely restore.
+  if (!key_values->load_from_buffer(name.c_str(), vmt.c_str())) {
     delete key_values;
     return nullptr;
   }
@@ -162,6 +135,18 @@ bool material_manager::reload() {
 void material_manager::shutdown() {
   const std::unique_lock lock{mutex_};
   for (auto& [name, definition] : materials_) release_material(definition);
+  materials_.clear();
+  prepared_ = false;
+  loaded_ = false;
+}
+
+void material_manager::abandon() {
+  const std::unique_lock lock{mutex_};
+  for (auto& [name, definition] : materials_) {
+    definition.material = nullptr;
+    definition.phong_tint = nullptr;
+    definition.envmap_tint = nullptr;
+  }
   materials_.clear();
   prepared_ = false;
   loaded_ = false;

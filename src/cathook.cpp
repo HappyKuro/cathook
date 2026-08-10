@@ -791,6 +791,8 @@ bool unload_module_runtime() {
   }
 
   print("Uninjecting...\n");
+  const bool release_graphics_resources = process_exiting.load(std::memory_order_acquire)
+      || is_environment_enabled("CATHOOK_DETACH_RELEASE_GRAPHICS");
 
   print("Unhooking VMT functions\n");
   backtrack::restore_net_channel_hook();
@@ -899,7 +901,7 @@ bool unload_module_runtime() {
   surface_runtime::reset_ready();
   restore_client_crashfix_patches();
   backtrack::clear();
-  entity_visuals::on_shutdown();
+  entity_visuals::on_shutdown(release_graphics_resources);
   followbot::controller().shutdown();
   navbot::controller().shutdown();
   automation::shutdown();
@@ -922,8 +924,6 @@ bool unload_module_runtime() {
   get_window_WM_info_target = nullptr;
   get_window_size_target = nullptr;
 
-  const bool release_graphics_resources = process_exiting.load(std::memory_order_acquire)
-      || is_environment_enabled("CATHOOK_DETACH_RELEASE_GRAPHICS");
   if (!release_graphics_resources) {
     print("Skipping graphics resource release during detach\n");
   }
