@@ -32,11 +32,12 @@ std::string prepare_vmt(const std::string& vmt) {
   const std::size_t insert_position = vmt.find_last_of('}');
   if (insert_position == std::string::npos) return vmt;
 
+  if (!is_vertex_lit(vmt)) return vmt;
+
   std::string suffix{};
   const bool has_cloak_factor = has_key(vmt, "$cloakfactor");
-  if (!has_key(vmt, "$model")) suffix += "\n\t$model \"1\"";
   if (!has_cloak_factor && !has_key(vmt, "$cloakpassenabled")) suffix += "\n\t$cloakpassenabled \"1\"";
-  if (!has_cloak_factor && is_vertex_lit(vmt) && !has_key(vmt, "proxies")) {
+  if (!has_cloak_factor && !has_key(vmt, "proxies")) {
     suffix += "\n\tProxies\n\t{\n\t\tinvis\n\t\t{\n\t\t}\n\t}";
   }
 

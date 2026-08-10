@@ -13,6 +13,7 @@ V  o o  V  file: src/games/tf2/sdk/net_messages.hpp
 #define NET_MESSAGES_HPP
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstring>
 
@@ -44,6 +45,8 @@ public:
   virtual auto get_name() const -> const char* = 0;
   virtual auto get_net_channel() const -> net_channel_info* = 0;
   virtual auto to_string() const -> const char* = 0;
+  virtual auto incoming_message_for_processing(double net_time, int num_bytes) -> bool = 0;
+  virtual auto get_size() const -> std::size_t = 0;
 };
 
 class net_message_base : public net_message {
@@ -74,6 +77,16 @@ public:
     return channel_;
   }
 
+  auto incoming_message_for_processing(double net_time, int num_bytes) -> bool override {
+    (void)net_time;
+    (void)num_bytes;
+    return false;
+  }
+
+  auto get_size() const -> std::size_t override {
+    return sizeof(net_message_base);
+  }
+
 protected:
   bool reliable_ = true;
   net_channel_info* channel_ = nullptr;
@@ -93,14 +106,18 @@ public:
   auto write_to_buffer(bf_write& buffer) -> bool override {
     buffer.write_u_bit_long(get_type(), netmsg_type_bits);
     length = data_out.get_num_bits_written();
-    buffer.write_u_bit_long(static_cast<std::uint32_t>(new_commands), num_new_command_bits);
     buffer.write_u_bit_long(static_cast<std::uint32_t>(backup_commands), num_backup_command_bits);
+    buffer.write_u_bit_long(static_cast<std::uint32_t>(new_commands), num_new_command_bits);
     buffer.write_word(length);
     return buffer.write_bits(data_out.get_data(), length);
   }
 
   auto get_type() const -> int override {
     return clc_move;
+  }
+
+  auto get_size() const -> std::size_t override {
+    return sizeof(*this);
   }
 
   auto get_group() const -> int override {
@@ -121,6 +138,7 @@ public:
   int length = 0;
   bf_read data_in{};
   bf_write data_out{};
+  std::array<std::uint8_t, 8> reserved{};
 };
 
 #if defined(__GNUC__)
