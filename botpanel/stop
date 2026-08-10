@@ -4,8 +4,39 @@ echo "Stopping... (this may take a while)"
 
 default_headless_display="${CAT_DEFAULT_DISPLAY:-:699}"
 
-[ -f /tmp/cat-ipc-server.pid ] && sudo kill $(cat /tmp/cat-ipc-server.pid)
-[ -f /tmp/ncat-cathook-webpanel.pid ] && PID="$(cat /tmp/ncat-cathook-webpanel.pid)" && sudo kill -SIGINT "$PID" && tail --pid="$PID" -f /dev/null
+stop_pidfile() {
+    local pid_file="$1"
+    local signal="${2:-TERM}"
+    local wait_seconds="${3:-10}"
+
+    [ -f "$pid_file" ] || return 0
+
+    local pid
+    pid="$(tr -cd '0-9' <"$pid_file" 2>/dev/null)"
+    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
+        rm -f "$pid_file"
+        return 0
+    fi
+
+    sudo kill "-$signal" "$pid" 2>/dev/null || true
+
+    local waited=0
+    local limit=$(( wait_seconds * 10 ))
+    while [ "$waited" -lt "$limit" ] && kill -0 "$pid" 2>/dev/null; do
+        sleep 0.1
+        waited=$(( waited + 1 ))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "  $pid did not exit on SIG$signal after ${wait_seconds}s, killing" >&2
+        sudo kill -KILL "$pid" 2>/dev/null || true
+    fi
+
+    rm -f "$pid_file"
+}
+
+stop_pidfile /tmp/cat-ipc-server.pid TERM 10
+stop_pidfile /tmp/ncat-cathook-webpanel.pid INT 10
 
 if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && command -v xpra >/dev/null 2>&1; then
     display="${CAT_XPRA_DISPLAY:-${CAT_DISPLAY:-${CAT_XVFB_DISPLAY:-$default_headless_display}}}"
@@ -37,5 +68,7 @@ ipcserver=$( ps faux | grep '/opt/cathook/ipc/bin/server' | grep -vw grep | awk 
 [ ! -z "$ipcserver" ] && sudo kill ${ipcserver};
 ipcconsole=$( ps faux | grep '/opt/cathook/ipc/bin/console' | grep -vw grep | awk '{ print $2 }' );
 [ ! -z "$ipcconsole" ] && sudo kill ${ipcconsole};
+
+rm -f /tmp/catbot-panel-start.lock
 
 echo "Stopped!"
