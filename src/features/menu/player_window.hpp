@@ -204,7 +204,7 @@ inline void draw_player_row_box(const player_row& row) {
         const unsigned long long sid64 = 76561197960265728ULL + static_cast<unsigned long long>(row.account_id);
         char cmd[160]{};
         std::snprintf(cmd, sizeof(cmd), "xdg-open 'steam://url/SteamIDPage/%llu' >/dev/null 2>&1 &", sid64);
-        std::system(cmd);
+        [[maybe_unused]] const int command_status = std::system(cmd);
       }
       ImGui::Separator();
     }

@@ -66,6 +66,11 @@ bool is_crumb_reached(const path_result& path, size_t crumb_index, const Vec3& o
     return false;
   }
 
+  if (path.crumbs[crumb_index].kind == crumb_kind::dropdown_approach)
+  {
+    return true;
+  }
+
   return vertical_distance(origin, target) <= crumb_reach_vertical_tolerance;
 }
 

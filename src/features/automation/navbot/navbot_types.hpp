@@ -90,6 +90,7 @@ enum class crumb_kind : uint8_t
 {
   area_center,
   transition_center,
+  dropdown_approach,
   destination
 };
 

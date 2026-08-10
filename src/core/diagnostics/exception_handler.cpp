@@ -74,7 +74,7 @@ void write_literal(const int fd, const char* const text)
         return;
     }
 
-    static_cast<void>(::write(fd, text, length));
+    [[maybe_unused]] const ssize_t write_result{ ::write(fd, text, length) };
 }
 
 void write_unsigned_decimal(const int fd, std::uint64_t value)
@@ -89,7 +89,7 @@ void write_unsigned_decimal(const int fd, std::uint64_t value)
     }
     while (value != 0 && index > 0);
 
-    static_cast<void>(::write(fd, buffer + index, std::size(buffer) - index));
+    [[maybe_unused]] const ssize_t write_result{ ::write(fd, buffer + index, std::size(buffer) - index) };
 }
 
 void write_signed_decimal(const int fd, const std::int64_t value)
@@ -114,7 +114,7 @@ void write_byte_hex(const int fd, const std::uint8_t value)
     char buffer[2]{};
     buffer[0] = k_hex_digits[(value >> 4) & 0xF];
     buffer[1] = k_hex_digits[value & 0xF];
-    static_cast<void>(::write(fd, buffer, sizeof(buffer)));
+    [[maybe_unused]] const ssize_t write_result{ ::write(fd, buffer, sizeof(buffer)) };
 }
 
 void write_hex(const int fd, const std::uint64_t value)
@@ -128,7 +128,7 @@ void write_hex(const int fd, const std::uint64_t value)
         buffer[2 + index] = k_hex_digits[(value >> shift) & 0xF];
     }
 
-    static_cast<void>(::write(fd, buffer, sizeof(buffer)));
+    [[maybe_unused]] const ssize_t write_result{ ::write(fd, buffer, sizeof(buffer)) };
 }
 
 void write_register(const int fd, const char* const name, const std::uint64_t value)
@@ -1066,7 +1066,7 @@ void dump_memory_map(const int fd)
             break;
         }
 
-        static_cast<void>(::write(fd, buffer, static_cast<std::size_t>(read_size)));
+        [[maybe_unused]] const ssize_t write_result{ ::write(fd, buffer, static_cast<std::size_t>(read_size)) };
     }
 
     ::close(maps_fd);

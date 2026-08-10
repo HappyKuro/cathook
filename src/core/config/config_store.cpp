@@ -267,7 +267,7 @@ void config_store::import_config(const Config& config)
     set_bool("aimbot.auto_unrev", config.aimbot.auto_unrev);
     set_float("aimbot.auto_rev_threshold", config.aimbot.auto_rev_threshold);
     set_int("aimbot.hitscan_modifiers", static_cast<int>(config.aimbot.hitscan_modifiers));
-    set_int("aimbot.hitscan_modifier_version", 4);
+    set_int("aimbot.hitscan_modifier_version", 5);
     set_float("aimbot.tapfire_distance", config.aimbot.tapfire_distance);
     set_float("aimbot.ignore_invisible", config.aimbot.ignore_invisible);
     set_int("aimbot.ignore_unsimulated_ticks", config.aimbot.ignore_unsimulated_ticks);

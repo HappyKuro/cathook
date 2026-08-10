@@ -119,8 +119,7 @@ inline decision resolve(Player* localplayer, Weapon* weapon, const aimbot_candid
     aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot);
   const bool should_scope = selected_target_needs_scope ||
     headshot_wait_needs_scope ||
-    ((config.aimbot.sniper_auto_scope ||
-      aimbot_modifier_enabled(Aim::hitscan_mod_auto_scope)) &&
+    (config.aimbot.sniper_auto_scope &&
       enemy_target_within_auto_scope_range(localplayer));
   const bool scope_confirmed = aimbot_sniper_scope_confirmed(localplayer);
   if (should_scope == scope_confirmed) {

@@ -4113,7 +4113,7 @@ static int stbi__parse_png_file(stbi__png *z, int scan, int req_comp)
                if (z->depth == 16) {
                   for (k = 0; k < s->img_n; ++k) tc16[k] = (stbi__uint16)stbi__get16be(s);
                } else {
-                  for (k = 0; k < s->img_n; ++k) tc[k] = (stbi_uc)(stbi__get16be(s) & 255) * stbi__depth_scale_table[z->depth];
+                  for (k = 0; k < s->img_n && k < 3; ++k) tc[k] = (stbi_uc)(stbi__get16be(s) & 255) * stbi__depth_scale_table[z->depth];
                }
             }
             break;

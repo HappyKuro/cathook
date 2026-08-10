@@ -35,7 +35,6 @@ namespace
 constexpr uint32_t nav_magic_number = 0xFEEDFACEu;
 constexpr uint32_t nav_current_version = 16u;
 constexpr uint32_t nav_mesh_avoid = 0x00000080u;
-constexpr uint32_t nav_mesh_cliff = 0x00008000u;
 constexpr uint32_t nav_mesh_nav_blocker = 0x80000000u;
 constexpr auto navmesh_resolve_refresh_interval = std::chrono::seconds(1);
 
@@ -573,22 +572,9 @@ bool directed_cross_area_segment_reachable(const nav_area_data& from_area, const
   return directed_height_delta_reachable(from, to);
 }
 
-bool is_dropdown_transition(const nav_area_data& from_area, const nav_area_data& to_area, const Vec3& from, const Vec3& to)
+bool is_dropdown_transition(const Vec3& from, const Vec3& to)
 {
-  const auto height_drop = from.z - to.z;
-  if (height_drop <= player_step_height)
-  {
-    return false;
-  }
-
-  const auto from_center_delta = std::fabs(from_area.center.z - from.z);
-  const auto to_center_delta = std::fabs(to_area.center.z - to.z);
-  if (from_center_delta <= player_step_height && to_center_delta <= player_step_height)
-  {
-    return true;
-  }
-
-  return (from_area.base_attributes & nav_mesh_cliff) != 0;
+  return from.z - to.z > player_jump_height;
 }
 
 struct dropdown_waypoint
@@ -598,10 +584,10 @@ struct dropdown_waypoint
   Vec3 landing{};
 };
 
-dropdown_waypoint make_dropdown_waypoint(const Vec3& current, const nav_area_data& next_area)
+dropdown_waypoint make_dropdown_waypoint(const Vec3& current, const Vec3& next, const nav_area_data& next_area)
 {
-  auto to_target = next_area.center - current;
-  if (current.z - next_area.center.z <= player_jump_height)
+  auto to_target = next - current;
+  if (current.z - next.z <= player_jump_height)
   {
     return {};
   }
@@ -1296,8 +1282,8 @@ void navbot_mesh::build_crumb_graph()
         continue;
       }
 
-      const auto dropdown = is_dropdown_transition(area, *next, from, to);
-      const auto waypoint = dropdown ? make_dropdown_waypoint(from, *next) : dropdown_waypoint{};
+      const auto dropdown = is_dropdown_transition(from, to);
+      const auto waypoint = dropdown ? make_dropdown_waypoint(from, to, *next) : dropdown_waypoint{};
       add_directed_edge(
         from_node,
         to_node,

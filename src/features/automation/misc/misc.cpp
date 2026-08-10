@@ -2020,7 +2020,7 @@ void automation_controller::play_custom_announcer_sound(const char* sound_name)
     " || pw-play " + quoted_path +
     " || aplay -q " + quoted_path +
     ") >/dev/null 2>&1 &";
-  std::system(command.c_str());
+  [[maybe_unused]] const int command_status = std::system(command.c_str());
 }
 
 void automation_controller::run_chatspam()

@@ -93,7 +93,6 @@ struct Aim {
     hitscan_mod_body_aim_if_lethal = 1u << 2,
     hitscan_mod_scoped_only       = 1u << 3,
     hitscan_mod_tapfire           = 1u << 4,
-    hitscan_mod_auto_scope        = 1u << 5,
     hitscan_mod_auto_rev          = 1u << 6,
     hitscan_mod_extinguish_team   = 1u << 7,
     hitscan_mod_prefer_medics     = 1u << 8,
@@ -101,7 +100,7 @@ struct Aim {
     hitscan_mod_default = hitscan_mod_body_aim_if_lethal,
     hitscan_mod_all = hitscan_mod_wait_for_headshot |
       hitscan_mod_wait_for_charge | hitscan_mod_body_aim_if_lethal |
-      hitscan_mod_scoped_only | hitscan_mod_tapfire | hitscan_mod_auto_scope |
+      hitscan_mod_scoped_only | hitscan_mod_tapfire |
       hitscan_mod_auto_rev | hitscan_mod_extinguish_team | hitscan_mod_prefer_medics |
       hitscan_mod_headshot_only
   };

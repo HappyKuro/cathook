@@ -407,7 +407,7 @@ std::vector<crumb> build_crumbs_from_crumb_nodes(const nav_mesh_cache& cache,
         node.area_id,
         outgoing_edge->nav_edge,
         outgoing_edge->dropdown_approach,
-        crumb_kind::transition_center
+        crumb_kind::dropdown_approach
       });
       crumbs.push_back(crumb{
         cache.crumb_nodes[outgoing_edge->to_node].area_id,
