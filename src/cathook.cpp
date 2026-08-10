@@ -758,6 +758,8 @@ void clear_runtime_pointer_state()
   key_values_constructor_original = nullptr;
   key_values_set_int_original = nullptr;
   key_values_load_from_buffer_original = nullptr;
+  key_values_system_original = nullptr;
+  key_values_delete_this_original = nullptr;
 
   queue_present_original = nullptr;
   create_swapchain_original = nullptr;
@@ -1269,6 +1271,12 @@ bool initialize_game_runtime() {
   convar_system = (ConvarSystem*)get_interface("./bin/linux64/libvstdlib.so", "VEngineCvar004");
   error_assert(convar_system == nullptr, "VEngineCvar004 is missing");
 
+  if (void* vstdlib_handle = open_loaded_library("libvstdlib.so")) {
+    key_values_system_original = reinterpret_cast<key_values_system_interface* (*)()>(dlsym(vstdlib_handle, "KeyValuesSystem"));
+    dlclose(vstdlib_handle);
+  }
+  error_assert(key_values_system_original == nullptr, "KeyValuesSystem is missing");
+
   if (!cathook::core::wait_for_module("steamclient.so")) {
     return false;
   }
@@ -1655,6 +1663,9 @@ bool initialize_game_runtime() {
 
   key_values_load_from_buffer_original = (bool (*)(void*, const char*, const char*, void*, const char*))sigscan_module("client.so", sigs::key_values_load_from_buffer);
   error_assert(key_values_load_from_buffer_original == nullptr, "Failed to find KeyValues::LoadFromBuffer()");
+
+  key_values_delete_this_original = reinterpret_cast<void (*)(void*)>(sigscan_module("client.so", sigs::key_values_delete_this));
+  error_assert(key_values_delete_this_original == nullptr, "Failed to find KeyValues::deleteThis()");
 
   if (nographics::is_noshaderapi()) {
     print("Empty shader API (-noshaderapi); skipping Vulkan present hooks\n");
