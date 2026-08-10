@@ -1,3 +1,8 @@
+/*
+data: 2026-08-10
+file: src/features/visuals/radar/radar.hpp
+author: HappyKuro
+*/
 #include "features/visuals/radar/radar.hpp"
 
 #include <algorithm>
