@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+botid=$1
+
+get_default_interface() {
+    local interface=""
+
+    if [[ -n "${CATHOOK_NET_INTERFACE:-}" ]]; then
+        printf '%s\n' "$CATHOOK_NET_INTERFACE"
+        return
+    fi
+
+    interface="$(ip -o -4 route get "${CATHOOK_NET_PROBE_HOST:-1.1.1.1}" 2>/dev/null | awk '
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i == "dev" && (i + 1) <= NF) {
+                    print $(i + 1)
+                    exit
+                }
+            }
+        }')"
+
+    if [[ -n "$interface" ]]; then
+        printf '%s\n' "$interface"
+        return
+    fi
+
+    ip -o -4 route show default 2>/dev/null | awk '
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i == "dev" && (i + 1) <= NF) {
+                    print $(i + 1)
+                    exit
+                }
+            }
+        }'
+}
+
+NS="catbotns$botid"
+VETH="veth$botid"
+VPEER="vpeer$botid"
+VETH_ADDR="10.200.$botid.1"
+VPEER_ADDR="10.200.$botid.2"
+INTERFACE="$(get_default_interface)"
+
+if [[ $EUID -ne 0 ]]; then
+    echo "You must be root to run this script"
+    exit 1
+fi
+
+if [[ -z "$INTERFACE" ]]; then
+    echo "Could not find default network interface with ip route" >&2
+    exit 1
+fi
+
+ip netns del "$NS" &>/dev/null
+ip link del ${VETH} &>/dev/null
+
+ip netns add "$NS"
+
+ip link add ${VETH} type veth peer name ${VPEER}
+
+ip link set ${VPEER} netns "$NS"
+
+ip addr add ${VETH_ADDR}/24 dev ${VETH}
+ip link set ${VETH} up
+
+ip netns exec "$NS" ip addr add ${VPEER_ADDR}/24 dev ${VPEER}
+ip netns exec "$NS" ip link set ${VPEER} up
+ip netns exec "$NS" ip link set lo up
+ip netns exec "$NS" ip route add default via ${VETH_ADDR}
+
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+iptables -t nat -A POSTROUTING -s ${VPEER_ADDR}/24 -o $INTERFACE -j MASQUERADE
+
+iptables -A FORWARD -i $INTERFACE -o ${VETH} -j ACCEPT
+iptables -A FORWARD -o $INTERFACE -i ${VETH} -j ACCEPT

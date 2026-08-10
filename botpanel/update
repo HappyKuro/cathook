@@ -1,0 +1,428 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd -- "$script_dir/.." && pwd)"
+web_panel_root="$script_dir/catbot-ipc-web-panel-main"
+ipc_server_root="$script_dir/catbot-ipc-server-main"
+database_root="$script_dir/catbot-database"
+repo_url="${CAT_REPO_URL:-https://github.com/pupnoodle/cathook}"
+install_root="${CATHOOK_ROOT:-/opt/cathook}"
+steamapps_detect_log="${CAT_STEAMAPPS_DETECT_LOG:-/tmp/cat-steamapps-detect.log}"
+shared_steamapps="/opt/steamapps"
+
+usage() {
+    cat <<'EOF'
+Usage: ./botpanel/update [--dev|--no-update]
+
+Use --dev to skip repository/navmesh update checks and never reset local changes.
+
+Environment:
+  CATHOOK_DEV_MODE=1
+  CATHOOK_ROOT=/opt/cathook       Copy navmeshes into CATHOOK_ROOT/navmeshes.
+  CAT_UPDATE_HOST_NAVMESHES=1  Copy navmeshes into the host TF2 maps directory.
+  CAT_STEAMAPPS_PATH=/path/to/steamapps
+  CAT_STEAM_ROOT=/path/to/steam
+EOF
+}
+
+is_enabled() {
+    case "${1:-}" in
+        "" | 0 | false | FALSE | no | NO | off | OFF)
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
+is_dev_mode() {
+    is_enabled "${CATHOOK_DEV_MODE:-${CAT_DEV_MODE:-0}}"
+}
+
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --dev | --no-update)
+                export CATHOOK_DEV_MODE=1
+                ;;
+            -h | --help)
+                usage
+                exit 0
+                ;;
+            *)
+                echo "Unknown update option: $1" >&2
+                usage >&2
+                exit 1
+                ;;
+        esac
+        shift
+    done
+}
+
+run_as_root() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo "$@"
+    else
+        echo "sudo is required for system setup steps." >&2
+        exit 1
+    fi
+}
+
+restore_repo_git_permissions() {
+    if [ "$(id -u)" -ne 0 ] || [ -z "${SUDO_UID:-}" ] || [ -z "${SUDO_GID:-}" ]; then
+        return
+    fi
+
+    if [ ! -d "$repo_root/.git" ]; then
+        return
+    fi
+
+    if find "$repo_root/.git" \( ! -user "$SUDO_UID" -o ! -group "$SUDO_GID" \) -print -quit 2>/dev/null | grep -q .; then
+        echo "Fixing .git ownership for sudo user before repository update..."
+        chown -R "$SUDO_UID:$SUDO_GID" "$repo_root/.git"
+    fi
+}
+
+run_repo_git() {
+    if [ "$(id -u)" -eq 0 ] && [ -n "${SUDO_UID:-}" ] && command -v sudo >/dev/null 2>&1; then
+        sudo -H -u "#$SUDO_UID" git -C "$repo_root" "$@"
+    else
+        git -C "$repo_root" "$@"
+    fi
+}
+
+user_home_path() {
+    local user_name="${SUDO_USER:-$USER}"
+
+    if command -v getent >/dev/null 2>&1; then
+        getent passwd "$user_name" | awk -F: '{ print $6; exit }'
+        return
+    fi
+
+    printf '%s\n' "$HOME"
+}
+
+write_steamapps_detect_log() {
+    local user_home="$1"
+    shift
+
+    {
+        echo "Failed to automatically find Steam steamapps with Team Fortress 2."
+        echo "user=${SUDO_USER:-$USER}"
+        echo "user_home=$user_home"
+        echo "HOME=$HOME"
+        echo "CAT_STEAM_ROOT=${CAT_STEAM_ROOT:-}"
+        echo "CAT_STEAMAPPS_PATH=${CAT_STEAMAPPS_PATH:-}"
+        echo
+        echo "Checked paths:"
+        for candidate in "$@"; do
+            if tf2_install_ready_from_steamapps "$candidate"; then
+                echo "  tf2:     $candidate"
+            elif [ -d "$candidate/common/Team Fortress 2" ]; then
+                echo "  partial: $candidate (Team Fortress 2 exists, tf_linux64 missing)"
+            elif [ -d "$candidate" ]; then
+                echo "  no-tf2:  $candidate"
+            else
+                echo "  missing: $candidate"
+            fi
+        done
+    } >"$steamapps_detect_log" 2>/dev/null || true
+}
+
+find_host_steamapps() {
+    local user_home
+    local candidate
+    local -a candidates=()
+
+    user_home="$(user_home_path)"
+    if [ -n "${CAT_STEAMAPPS_PATH:-}" ]; then
+        candidates+=("$CAT_STEAMAPPS_PATH")
+    fi
+
+    if [ -n "${CAT_STEAM_ROOT:-}" ]; then
+        candidates+=("$CAT_STEAM_ROOT/steamapps")
+    fi
+
+    candidates+=(
+        "$user_home/.steam/steam/steamapps" \
+        "$user_home/.local/share/Steam/steamapps" \
+        "$user_home/.steam/debian-installation/steamapps" \
+        "$HOME/.steam/steam/steamapps" \
+        "$HOME/.local/share/Steam/steamapps" \
+        "$HOME/.steam/debian-installation/steamapps"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        if tf2_install_ready_from_steamapps "$candidate"; then
+            printf '%s\n' "$candidate"
+            return
+        fi
+    done
+
+    write_steamapps_detect_log "$user_home" "${candidates[@]}"
+    return 1
+}
+
+tf2_install_ready_from_steamapps() {
+    local steamapps_path="$1"
+
+    [ -x "$steamapps_path/common/Team Fortress 2/tf_linux64" ]
+}
+
+path_has_entries() {
+    local target_path="$1"
+
+    find "$target_path" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q .
+}
+
+ensure_shared_steamapps() {
+    local host_steamapps="$1"
+    local backup_path
+    local host_real
+
+    if [ -z "$host_steamapps" ] || [ ! -d "$host_steamapps" ]; then
+        echo "Host steamapps path is unavailable; cannot prepare $shared_steamapps." >&2
+        return 1
+    fi
+
+    host_real="$(readlink -f "$host_steamapps" 2>/dev/null || printf '%s\n' "$host_steamapps")"
+    if [ "$host_real" = "$shared_steamapps" ]; then
+        return 0
+    fi
+
+    if mountpoint -q "$shared_steamapps" 2>/dev/null; then
+        if tf2_install_ready_from_steamapps "$shared_steamapps"; then
+            return 0
+        fi
+
+        echo "$shared_steamapps is mounted but does not expose a runnable TF2 install; unmounting it."
+        run_as_root umount "$shared_steamapps"
+    fi
+
+    if [ -L "$shared_steamapps" ]; then
+        echo "Replacing $shared_steamapps symlink with a bind mount to $host_real."
+        run_as_root rm -f "$shared_steamapps"
+    elif [ -e "$shared_steamapps" ]; then
+        if tf2_install_ready_from_steamapps "$shared_steamapps"; then
+            return 0
+        fi
+
+        backup_path="$shared_steamapps.backup.$(date +%s)"
+        if path_has_entries "$shared_steamapps"; then
+            echo "$shared_steamapps exists but does not contain a runnable TF2 install; moving it to $backup_path."
+            run_as_root mv "$shared_steamapps" "$backup_path"
+        else
+            run_as_root rmdir "$shared_steamapps" 2>/dev/null || run_as_root mv "$shared_steamapps" "$backup_path"
+        fi
+    fi
+
+    run_as_root mkdir -p "$shared_steamapps"
+    run_as_root mount --bind "$host_real" "$shared_steamapps"
+}
+
+update_origin_url() {
+    local current_url
+
+    current_url="$(run_repo_git config --get remote.origin.url || true)"
+    if [ -n "$repo_url" ] && [ "$current_url" != "$repo_url" ]; then
+        run_repo_git remote set-url origin "$repo_url"
+        echo "Updated origin remote to $repo_url"
+    fi
+}
+
+discard_local_tracked_changes() {
+    if [ -z "$(run_repo_git status --porcelain --untracked-files=no)" ]; then
+        return
+    fi
+
+    echo "Discarding local tracked changes before updating..."
+    run_repo_git reset --hard
+}
+
+update_repo() {
+    local old_script=""
+    local new_script=""
+
+    if is_dev_mode; then
+        echo "Dev mode enabled; skipping repository update check."
+        return
+    fi
+
+    if run_repo_git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        old_script="$(run_repo_git rev-parse HEAD:botpanel/update 2>/dev/null || true)"
+        update_origin_url
+        discard_local_tracked_changes
+        run_repo_git pull --ff-only
+        run_repo_git submodule update --init --recursive
+        new_script="$(run_repo_git rev-parse HEAD:botpanel/update 2>/dev/null || true)"
+
+        if [ -n "$old_script" ] && [ -n "$new_script" ] && [ "$old_script" != "$new_script" ]; then
+            echo "Update script changed during pull; restarting."
+            exec "$0" "$@"
+        fi
+    else
+        echo "Warning: $repo_root is not a git checkout, skipping git pull."
+    fi
+}
+
+install_dependencies() {
+    if [ -x "$repo_root/install-deps" ]; then
+        bash "$repo_root/install-deps"
+    else
+        bash "$repo_root/packages/packages.sh"
+    fi
+}
+
+build_and_install_runtime() {
+    local dev_mode="${CATHOOK_DEV_MODE:-${CAT_DEV_MODE:-0}}"
+
+    echo "Building and installing Cat textmode runtime..."
+    run_as_root env CAT_BUILD_MODE="${CAT_BUILD_MODE:-textmode}" CATHOOK_ROOT="${CATHOOK_ROOT:-/opt/cathook}" CATHOOK_DEV_MODE="$dev_mode" bash "$repo_root/build.sh" --textmode
+}
+
+build_web_panel() {
+    mkdir -p "$web_panel_root/logs" "$web_panel_root/public"
+    touch "$web_panel_root/logs/main.log"
+
+    if command -v npm >/dev/null 2>&1; then
+        ( cd "$web_panel_root" && npm install )
+    else
+        echo "npm is missing after dependency install." >&2
+        exit 1
+    fi
+
+    if [ ! -x "$web_panel_root/node_modules/.bin/browserify" ]; then
+        echo "browserify is missing after npm install." >&2
+        exit 1
+    fi
+
+    ( cd "$web_panel_root" && ./node_modules/.bin/browserify script.js -o public/bundle.js )
+}
+
+prepare_botpanel_state() {
+    mkdir -p "$script_dir/user_instances"
+
+    if [ ! -f "$script_dir/accounts.txt" ]; then
+        cat > "$script_dir/accounts.txt" <<'EOF'
+
+EOF
+        chmod 600 "$script_dir/accounts.txt" 2>/dev/null || true
+        echo "Created $script_dir/accounts.txt"
+    fi
+}
+
+prepare_firejail() {
+    local config_path="/etc/firejail/firejail.config"
+
+    if [ ! -f "$config_path" ]; then
+        return
+    fi
+
+    run_as_root cp -n "$config_path" "$config_path.CATHOOK.bak" 2>/dev/null || true
+    run_as_root sed -i -E 's/^[[:space:]]*restricted-network[[:space:]]+yes/# restricted-network yes/' "$config_path"
+}
+
+fetch_navmesh_database() {
+    echo "Fetching navmeshes..."
+    if [ -d "$database_root/.git" ]; then
+        git -C "$database_root" fetch --depth 1
+        git -C "$database_root" reset --hard origin/master
+    elif [ -d "$database_root" ]; then
+        echo "$database_root exists but is not a git checkout; skipping navmesh update." >&2
+        return 1
+    else
+        git clone --depth 1 https://github.com/GatoPotato658/catbot-database "$database_root"
+    fi
+}
+
+copy_navmeshes_to() {
+    local target_dir="$1"
+    local label="$2"
+
+    echo "Copying navmeshes into $target_dir ($label)..."
+    run_as_root mkdir -p "$target_dir"
+    run_as_root rsync "$database_root/nav meshes/"*.nav "$target_dir/"
+    run_as_root find "$target_dir" -maxdepth 1 -type f -name '*.nav' -exec chmod 755 {} +
+}
+
+update_navmeshes() {
+    local cathook_navmeshes="$install_root/navmeshes"
+    local host_steamapps
+    local host_tf2_maps
+    local shared_tf2_maps="$shared_steamapps/common/Team Fortress 2/tf/maps"
+    local tf2_maps="$shared_tf2_maps"
+
+    if is_dev_mode; then
+        echo "Dev mode enabled; skipping navmesh update."
+        return
+    fi
+
+    fetch_navmesh_database || return
+    copy_navmeshes_to "$cathook_navmeshes" "Cat navbot search path"
+
+    if ! host_steamapps="$(find_host_steamapps)"; then
+        echo "Error: could not automatically find the host Steam steamapps directory." >&2
+        echo "Detection log: $steamapps_detect_log" >&2
+        cat "$steamapps_detect_log" >&2 2>/dev/null || true
+        echo "Navmeshes were copied to $cathook_navmeshes, but TF2 maps could not be located." >&2
+        return
+    fi
+
+    host_tf2_maps="$host_steamapps/common/Team Fortress 2/tf/maps"
+    if [ ! -d "$host_tf2_maps" ]; then
+        echo "TF2 maps directory not found at $host_tf2_maps; navmeshes were copied to $cathook_navmeshes only."
+        return
+    fi
+
+    ensure_shared_steamapps "$host_steamapps" || return
+
+    if is_enabled "${CAT_UPDATE_HOST_NAVMESHES:-0}"; then
+        tf2_maps="$host_tf2_maps"
+        echo "CAT_UPDATE_HOST_NAVMESHES is enabled; navmeshes will also be copied to the host TF2 install."
+    else
+        echo "Navmeshes will also be copied into /opt/steamapps, matching the shared potionhook steamapps path."
+    fi
+
+    copy_navmeshes_to "$tf2_maps" "TF2 maps directory"
+}
+
+fix_runtime_permissions_once() {
+    local permissions_script="$script_dir/fix_permissions"
+
+    if [ -x "$permissions_script" ]; then
+        "$permissions_script" --once
+    fi
+}
+
+parse_args "$@"
+
+if [ "$(uname -s)" != "Linux" ]; then
+    echo "./botpanel/update must run on Linux." >&2
+    exit 1
+fi
+
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Run this script as your normal Linux user, not root." >&2
+    exit 1
+fi
+
+if [ ! -d "$web_panel_root" ] || [ ! -d "$ipc_server_root" ]; then
+    echo "Missing bundled botpanel directories. Expected:" >&2
+    echo "  $web_panel_root" >&2
+    echo "  $ipc_server_root" >&2
+    exit 1
+fi
+
+update_repo "$@"
+install_dependencies
+build_and_install_runtime
+build_web_panel
+prepare_botpanel_state
+prepare_firejail
+update_navmeshes
+
+echo
+echo "Done. Start the panel with ./botpanel/start"

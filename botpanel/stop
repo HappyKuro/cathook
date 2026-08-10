@@ -1,0 +1,41 @@
+#!/bin/bash
+
+echo "Stopping... (this may take a while)"
+
+default_headless_display="${CAT_DEFAULT_DISPLAY:-:699}"
+
+[ -f /tmp/cat-ipc-server.pid ] && sudo kill $(cat /tmp/cat-ipc-server.pid)
+[ -f /tmp/ncat-cathook-webpanel.pid ] && PID="$(cat /tmp/ncat-cathook-webpanel.pid)" && sudo kill -SIGINT "$PID" && tail --pid="$PID" -f /dev/null
+
+if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && command -v xpra >/dev/null 2>&1; then
+    display="${CAT_XPRA_DISPLAY:-${CAT_DISPLAY:-${CAT_XVFB_DISPLAY:-$default_headless_display}}}"
+    xpra stop "$display" >/tmp/cat-catbot-xpra-stop.log 2>&1 || true
+fi
+
+xvfb_pid_file="${CAT_XVFB_PID_FILE:-/tmp/cat-catbot-xvfb.pid}"
+if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && [ -f "$xvfb_pid_file" ]; then
+    xvfb_pid="$(tr -d '[:space:]' <"$xvfb_pid_file" 2>/dev/null || true)"
+    [ -n "$xvfb_pid" ] && kill "$xvfb_pid" 2>/dev/null || true
+    rm -f "$xvfb_pid_file"
+fi
+
+xvfb_pool_pid_dir="${CAT_CHUNKED_X_DISPLAY_PID_DIR:-/tmp/cat-catbot-xvfb-pool}"
+if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && [ -d "$xvfb_pool_pid_dir" ]; then
+    for xvfb_pool_pid_file in "$xvfb_pool_pid_dir"/*.pid; do
+        [ -e "$xvfb_pool_pid_file" ] || continue
+        xvfb_pool_pid="$(tr -d '[:space:]' <"$xvfb_pool_pid_file" 2>/dev/null || true)"
+        [ -n "$xvfb_pool_pid" ] && kill "$xvfb_pool_pid" 2>/dev/null || true
+        rm -f "$xvfb_pool_pid_file"
+    done
+fi
+
+[ -f /tmp/ncat-cathook-webpanel.pid ] && sudo rm /tmp/ncat-cathook-webpanel.pid
+[ -f /tmp/cat-ipc-server.pid ] && sudo rm /tmp/cat-ipc-server.pid
+[ -f /tmp/pulsemodule.id ] && pactl unload-module $(cat /tmp/pulsemodule.id) && rm /tmp/pulsemodule.id
+
+ipcserver=$( ps faux | grep '/opt/cathook/ipc/bin/server' | grep -vw grep | awk '{ print $2 }' );
+[ ! -z "$ipcserver" ] && sudo kill ${ipcserver};
+ipcconsole=$( ps faux | grep '/opt/cathook/ipc/bin/console' | grep -vw grep | awk '{ print $2 }' );
+[ ! -z "$ipcconsole" ] && sudo kill ${ipcconsole};
+
+echo "Stopped!"

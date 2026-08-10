@@ -1,0 +1,164 @@
+body {
+    color:
+    font-family: "Tahoma", sans-serif;
+    font-size: 10px;
+    background:
+    padding: 4px;
+    font-smooth: none;
+    -webkit-font-smoothing: none;
+}
+
+.team-red {
+    color:
+}
+
+.team-blu {
+    color:
+}
+
+.error {
+    color:
+}
+
+.warning {
+    color:
+}
+
+.nohighlight {
+    color:
+}
+
+    padding: 0;
+}
+
+a {
+    color: white;
+    text-decoration: none;
+}
+
+a:visited {
+    color: white;
+}
+
+{
+    display: inline-block;
+    padding: 3px;
+    margin-bottom: 3px;
+}
+
+    position: static;
+    bottom: 16;
+    left: 0;
+    width: 100%;
+}
+
+    padding: 4px;
+}
+
+.hidden {
+    display: none;
+}
+
+.disconnected .connected {
+    color:
+}
+
+.stopped .active {
+    color:
+}
+
+.modal {
+    display: flex;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background:
+    width: 400px;
+    position: relative;
+    padding: 8px;
+    border-top: 1px solid
+    border-left: 1px solid
+    border-bottom: 1px solid
+    border-right: 1px solid
+}
+
+.modal-content h2 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    padding: 4px;
+    padding-right: 24px;
+    background:
+    border-bottom: 1px solid
+    border-right: 1px solid
+    border-top: 1px solid
+    border-left: 1px solid
+    height: 16px;
+    line-height: 16px;
+}
+
+.modal-content code {
+    background:
+    padding: 1px 3px;
+    border-bottom: 1px solid
+    border-right: 1px solid
+    border-top: 1px solid
+    border-left: 1px solid
+}
+
+.modal-content ol {
+    margin: 4px 0;
+    padding-left: 20px;
+}
+
+.modal-content li {
+    margin: 2px 0;
+}
+
+.modal-content p {
+    margin: 4px 0;
+}
+
+    display: block;
+    margin: 8px auto 0 auto;
+    min-width: 100px;
+}
+
+.modal.hidden {
+    display: none;
+}
+
+.modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 16px;
+    height: 16px;
+    text-align: center;
+    line-height: 14px;
+    cursor: pointer;
+    font-family: "Tahoma", sans-serif;
+    font-size: 12px;
+    border-top: 1px solid
+    border-left: 1px solid
+    border-bottom: 1px solid
+    border-right: 1px solid
+    background:
+    z-index: 1;
+}
+
+.modal-close:active {
+    border-bottom: 1px solid
+    border-right: 1px solid
+    border-top: 1px solid
+    border-left: 1px solid
+    background:
+}

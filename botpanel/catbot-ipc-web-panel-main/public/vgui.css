@@ -1,0 +1,185 @@
+.vgui-font {
+    color:
+
+    font-family: "Tahoma", sans-serif;
+    font-size: 10px;
+
+    font-smooth: none;
+    -webkit-font-smoothing: none;
+}
+
+input {
+    text-align: left;
+}
+
+input:not([type=button]), .vgui-inset {
+    border-bottom: 1px solid
+    border-right: 1px solid
+    border-top: 1px solid
+    border-left: 1px solid
+    background:
+    color:
+}
+
+input[type=button]:not(:active), .vgui-outset {
+    border-top: 1px solid
+    border-left: 1px solid
+    border-bottom: 1px solid
+    border-right: 1px solid
+    color:
+    background:
+}
+
+input[type=button]:active {
+    border-bottom: 1px solid
+    border-right: 1px solid
+    border-top: 1px solid
+    border-left: 1px solid
+    background:
+    color:
+}
+
+.vgui-container {
+    padding: 4px;
+    background:
+}
+
+.vgui-select {
+    display: block;
+    min-width: 8em;
+    padding: 3px;
+    padding-right: 16px;
+    border-bottom: 1px solid
+    border-right: 1px solid
+    border-top: 1px solid
+    border-left: 1px solid
+    background: url('vgui-dropdown.png')
+    color:
+}
+
+.vgui-select-hidden {
+    display: none;
+}
+
+.vgui-select-container {
+    position: relative;
+}
+
+.vgui-select-list {
+    display: block;
+    overflow: hidden;
+    margin: 0;
+    box-sizing: border-box;
+    width: 100%;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    list-style: none;
+    z-index: 3;
+    padding: 0;
+    margin-top: 2px;
+}
+
+.vgui-select-option {
+    padding: 3;
+    width: 100%;
+}
+
+.vgui-select-option:hover {
+    background:
+}
+
+::selection {
+    background: rgba(149, 136, 49, 0.996);
+    color: white;
+}
+
+.vgui-table {
+    font-size: 10px;
+    border-collapse: separate;
+    border-spacing: 0px;
+}
+
+.vgui-table td {
+    padding: 2px 6px;
+    min-width: 3em;
+}
+
+.vgui-table tbody tr:nth-child(even)
+{
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.vgui-table tbody tr:first-child {
+    background:
+}
+
+.vgui-table tbody tr:first-child td {
+    border-top: 1px solid
+    border-left: 1px solid
+    border-bottom: 1px solid
+    border-right: 1px solid
+}
+
+input:not([type=checkbox]) {
+    padding: 3px;
+    font-size: 10px;
+    min-width: 62px;
+}
+
+input[type=checkbox]:before {
+    border-bottom: 1px solid
+    border-right: 1px solid
+    border-top: 1px solid
+    border-left: 1px solid
+    background:
+    content: "";
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+}
+
+.vgui-button-centered {
+    text-align: center;
+}
+
+input[type=checkbox]:checked:before {
+    background: url('vgui-checkbox.png')
+}
+
+[disabled], .vgui-disabled {
+    background:
+    color:
+}
+
+.noselect {
+    cursor: default;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+option:hover {
+    background:
+}
+
+*:focus {
+    outline: none;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid
+    border-bottom: 1px solid
+}
+
+.nopad {
+    padding: 0;
+}
+
+.vmiddle * {
+    vertical-align: middle;
+}
