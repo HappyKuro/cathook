@@ -1868,8 +1868,6 @@ void draw_atlas_tile(
           continue;
         }
 
-        // Scale the sampled alpha by the tint's alpha so a faded caller fades here
-        // too. The GPU path gets this for free from AddImage; this path does not.
         const uint32_t tint_alpha = (tint >> IM_COL32_A_SHIFT) & 0xFFu;
         const auto alpha = static_cast<uint8_t>(
           (static_cast<uint32_t>(source_alpha) * tint_alpha) / 255u);
@@ -3651,9 +3649,6 @@ bool atlas_texture_ready()
     return true;
   }
 
-  // The GPU upload may still be in flight. The CPU blit path can draw from the
-  // decoded pixels in the meantime, so gating on the texture alone would suppress
-  // icons during that window.
   return ensure_head_emoji_atlas_loaded() &&
     !g_head_emoji_atlas.pixels.empty() &&
     g_head_emoji_atlas.width > 0 &&

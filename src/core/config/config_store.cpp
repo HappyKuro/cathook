@@ -1028,9 +1028,12 @@ void config_store::export_config(Config& config) const
     config.visuals.radar.enabled = get_bool("visuals.radar.enabled", config.visuals.radar.enabled);
     config.visuals.radar.x = get_float("visuals.radar.x", config.visuals.radar.x);
     config.visuals.radar.y = get_float("visuals.radar.y", config.visuals.radar.y);
-    config.visuals.radar.size = get_int("visuals.radar.size", config.visuals.radar.size);
-    config.visuals.radar.zoom = get_float("visuals.radar.zoom", config.visuals.radar.zoom);
-    config.visuals.radar.icon_size = get_int("visuals.radar.icon_size", config.visuals.radar.icon_size);
+    config.visuals.radar.size = std::clamp(
+        get_int("visuals.radar.size", config.visuals.radar.size), 100, 600);
+    config.visuals.radar.zoom = std::clamp(
+        get_float("visuals.radar.zoom", config.visuals.radar.zoom), 5.0f, 50.0f);
+    config.visuals.radar.icon_size = std::clamp(
+        get_int("visuals.radar.icon_size", config.visuals.radar.icon_size), 10, 40);
     config.visuals.radar.show_teammates = get_bool("visuals.radar.show_teammates", config.visuals.radar.show_teammates);
     config.visuals.radar.show_enemies = get_bool("visuals.radar.show_enemies", config.visuals.radar.show_enemies);
     config.visuals.radar.use_icons = get_bool("visuals.radar.use_icons", config.visuals.radar.use_icons);

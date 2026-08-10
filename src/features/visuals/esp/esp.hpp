@@ -20,9 +20,6 @@ void draw_thirdperson_crosshair_imgui();
 void update_player_head_emoji_cache();
 void reset_esp_runtime_state();
 
-// assets/textures/atlas.png is decoded and uploaded once for the whole cheat.
-// These expose that one copy so other overlays (the radar) can draw 64x64 tiles
-// out of it instead of loading a second copy of the same image.
 bool atlas_texture_ready();
 void draw_shared_atlas_tile(
   ImDrawList* draw_list,
