@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <deque>
 #include <string>
 #include <utility>
 #include <vector>
@@ -181,14 +182,13 @@ inline auto format_reject_detail(const aimbot_reject_debug& reject) -> std::stri
 
 struct owned_indicator_rows final
 {
-  std::vector<std::string> values{};
+  std::deque<std::string> values{};
   std::vector<mono::indicator_row> rows{};
 };
 
 inline auto build_meter_rows(const std::string_view label, std::string status, std::string value, const bool active) -> owned_indicator_rows
 {
   owned_indicator_rows result{};
-  result.values.reserve(2);
   result.rows.reserve(1);
   result.values.push_back(std::move(status));
   result.values.push_back(std::move(value));
@@ -201,7 +201,6 @@ inline auto build_aimbot_debug_rows() -> owned_indicator_rows
   const aimbot_debug_state& state = aimbot_debug_get_state();
   const bool active = state.attack_ready;
   owned_indicator_rows result{};
-  result.values.reserve(16);
   result.rows.reserve(16);
   const auto add = [&](const char* label, std::string value) {
     result.values.push_back(std::move(value));

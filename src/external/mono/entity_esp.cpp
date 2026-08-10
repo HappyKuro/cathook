@@ -41,9 +41,10 @@ float entity_esp_renderer::draw_health_bar(const int entity_id, const entity_box
 		shown = target;
 	}
 
-	const float height{ std::max(std::round(box.size.y), 1.0f) };
-	const float x{ std::round(box.position.x - style.spacing - style.width - 2.0f) };
 	const float y{ std::round(box.position.y) };
+	const float bottom{ std::round(box.position.y + box.size.y) };
+	const float height{ std::max(bottom - y, 1.0f) };
+	const float x{ std::round(box.position.x - style.spacing - style.width - 2.0f) };
 	const float fill_y{ std::round(y + height * (1.0f - shown)) };
 	ImDrawList *const draw_list{ ImGui::GetWindowDrawList() };
 	draw_list->AddRectFilled({ x - 1.0f, y - 1.0f }, { x + style.width + 1.0f, y + height + 1.0f }, to_u32(style.outline, 1.0f), 1.5f);

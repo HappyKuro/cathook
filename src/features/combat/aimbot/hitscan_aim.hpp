@@ -142,11 +142,20 @@ inline bool hitscan_aim_waits_for_headshot(Weapon* weapon) {
 }
 
 inline uint32_t hitscan_aim_effective_hitbox_mask(Weapon* weapon) {
+  const uint32_t configured_mask = hitscan_aim_configured_hitbox_mask();
+  const bool configured_head_only =
+    (configured_mask & aim_hitbox_mask_head) != 0 &&
+    (configured_mask & ~aim_hitbox_mask_head) == 0;
+
+  if (weapon != nullptr && !weapon->is_headshot_weapon() && configured_head_only) {
+    return configured_mask | aim_hitbox_mask_body | aim_hitbox_mask_pelvis;
+  }
+
   return ((weapon != nullptr && weapon->is_headshot_weapon() &&
       aimbot_modifier_enabled(Aim::hitscan_mod_headshot_only)) ||
       hitscan_aim_waits_for_headshot(weapon))
     ? aim_hitbox_mask_head
-    : hitscan_aim_configured_hitbox_mask();
+    : configured_mask;
 }
 
 inline unsigned int hitscan_aim_trace_mask() {
@@ -456,7 +465,10 @@ inline int hitscan_aim_build_hitbox_order(int priority_hitbox,
   return count;
 }
 
-inline bool hitscan_aim_accepts_trace_hitbox(const aimbot_candidate& candidate, int trace_hitbox) {
+inline bool hitscan_aim_accepts_trace_hitbox(
+  const aimbot_candidate& candidate,
+  Weapon* weapon,
+  int trace_hitbox) {
   if (candidate.player == nullptr || candidate.hitbox < 0) {
     return true;
   }
@@ -475,7 +487,7 @@ inline bool hitscan_aim_accepts_trace_hitbox(const aimbot_candidate& candidate, 
   }
 
   return base_hitbox == candidate.hitbox ||
-    aimbot_hitbox_matches_mask(base_hitbox, hitscan_aim_configured_hitbox_mask());
+    aimbot_hitbox_matches_mask(base_hitbox, hitscan_aim_effective_hitbox_mask(weapon));
 }
 
 inline bool hitscan_aim_ray_hits_model_hitbox(Player* target,
@@ -1196,7 +1208,7 @@ inline bool hitscan_aim_trace_candidate(Player* localplayer,
   }
 
   const bool trace_hit_candidate = hitscan_aim_same_entity(trace.entity, candidate.entity);
-  if (trace_hit_candidate && hitscan_aim_accepts_trace_hitbox(candidate, trace.hitbox)) {
+  if (trace_hit_candidate && hitscan_aim_accepts_trace_hitbox(candidate, weapon, trace.hitbox)) {
     if (result != nullptr) {
       result->hit = true;
     }

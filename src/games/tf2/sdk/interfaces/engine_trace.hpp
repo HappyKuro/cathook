@@ -55,6 +55,7 @@ struct trace_filter {
   void* skip;
   void* target;
   int skip_team = -1;
+  bool ignore_target = false;
 };
 
 struct cplane_t {
@@ -238,6 +239,15 @@ inline enum trace_type_t world_trace_get_type(struct trace_filter*) {
 
 static void* trace_filter_world_vtable[2] = { (void*)world_trace_should_hit_entity, (void*)world_trace_get_type };
 
+inline enum trace_type_t world_and_props_trace_get_type(struct trace_filter*) {
+  return TRACE_EVERYTHING;
+}
+
+static void* trace_filter_world_and_props_vtable[2] = {
+  (void*)world_trace_should_hit_entity,
+  (void*)world_and_props_trace_get_type
+};
+
 inline bool melee_trace_should_hit_entity(struct trace_filter* interface, Entity* entity, int contents_mask) {
   (void)contents_mask;
   if (entity == nullptr || (interface != nullptr && trace_filter_same_entity(entity, interface->skip))) {
@@ -269,7 +279,7 @@ inline bool projectile_trace_should_hit_entity(struct trace_filter* interface, E
     return false;
   }
   if (interface != nullptr && trace_filter_same_entity(entity, interface->target)) {
-    return true;
+    return !interface->ignore_target;
   }
   if (interface != nullptr && interface->skip_team >= 0 &&
       entity->get_class_id() == class_id::PLAYER &&
@@ -365,6 +375,7 @@ public:
     filter->skip = skip;
     filter->target = nullptr;
     filter->skip_team = -1;
+    filter->ignore_target = false;
   }
 
   void init_hitscan_trace_filter(struct trace_filter* filter, Entity* skip_entity, Entity* target_entity = nullptr) {
@@ -372,6 +383,7 @@ public:
     filter->skip = skip_entity;
     filter->target = target_entity;
     filter->skip_team = skip_entity != nullptr ? static_cast<int>(skip_entity->get_team()) : -1;
+    filter->ignore_target = false;
   }
 
   void init_world_trace_filter(struct trace_filter* filter) {
@@ -379,6 +391,15 @@ public:
     filter->skip = nullptr;
     filter->target = nullptr;
     filter->skip_team = -1;
+    filter->ignore_target = false;
+  }
+
+  void init_world_and_props_trace_filter(struct trace_filter* filter) {
+    filter->vtable = trace_filter_world_and_props_vtable;
+    filter->skip = nullptr;
+    filter->target = nullptr;
+    filter->skip_team = -1;
+    filter->ignore_target = false;
   }
 
   void init_melee_trace_filter(struct trace_filter* filter, Entity* skip_entity, Entity* target_entity) {
@@ -386,14 +407,16 @@ public:
     filter->skip = skip_entity;
     filter->target = target_entity;
     filter->skip_team = skip_entity != nullptr ? static_cast<int>(skip_entity->get_team()) : -1;
+    filter->ignore_target = false;
   }
 
   void init_projectile_trace_filter(struct trace_filter* filter, Entity* skip_entity,
-    Entity* target_entity = nullptr) {
+    Entity* target_entity = nullptr, bool ignore_target = false) {
     filter->vtable = trace_filter_projectile_vtable;
     filter->skip = skip_entity;
     filter->target = target_entity;
     filter->skip_team = skip_entity != nullptr ? static_cast<int>(skip_entity->get_team()) : -1;
+    filter->ignore_target = ignore_target;
   }
 
   void trace_ray(struct ray_t* ray, unsigned int f_mask, struct trace_filter* p_trace_filter, struct trace_t* p_trace) {

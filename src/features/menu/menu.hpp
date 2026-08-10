@@ -2935,6 +2935,7 @@ static void draw_binds_content() {
           bind->key_mode = static_cast<cat_bind::bind_key_mode>(mode);
           bind->toggle_state = false;
           bind->was_down = false;
+          bind->press_pending = false;
           cat_bind::mark_dirty();
         }
         if (bind->waiting) {
@@ -2944,6 +2945,7 @@ static void draw_binds_content() {
           if (cat_menu::input_key("Key", &bind->key) && previous_key != bind->key) {
             bind->toggle_state = false;
             bind->was_down = false;
+            bind->press_pending = false;
             cat_bind::mark_dirty();
           }
         }

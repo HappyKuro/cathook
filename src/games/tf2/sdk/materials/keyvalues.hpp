@@ -93,6 +93,8 @@ public:
   void delete_this() {
     if (key_values_delete_this_original != nullptr) {
       key_values_delete_this_original(this);
+    } else {
+      delete this;
     }
   }
 

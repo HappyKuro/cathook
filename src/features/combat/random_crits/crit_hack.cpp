@@ -914,6 +914,10 @@ bool wants_queued_force(user_cmd* cmd) {
   return cmd != nullptr && queued_force_active;
 }
 
+bool has_pending_queued_force() {
+  return pending_force_attack || queued_force_active;
+}
+
 bool is_command_crit(user_cmd* cmd, int command_number) {
   auto* local = entity_list != nullptr ? entity_list->get_localplayer() : nullptr;
   if (cmd == nullptr || local == nullptr || !local->is_alive() || local->is_dormant()) {

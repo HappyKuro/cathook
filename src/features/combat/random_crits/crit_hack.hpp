@@ -63,6 +63,7 @@ void store_health_history(int index, int health, Player* player = nullptr);
 [[nodiscard]] int predict_command_number(user_cmd* cmd);
 [[nodiscard]] bool should_hold_attack(user_cmd* cmd);
 [[nodiscard]] bool wants_queued_force(user_cmd* cmd);
+[[nodiscard]] bool has_pending_queued_force();
 [[nodiscard]] bool is_command_crit(user_cmd* cmd, int command_number);
 [[nodiscard]] int find_queued_crit_command(user_cmd* cmd, int max_commands);
 void notify_queued_release(int command_number);

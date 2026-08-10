@@ -21,6 +21,9 @@
 namespace projectile_aim {
 namespace detail {
 
+static constexpr unsigned int projectile_collision_mask =
+  MASK_SOLID | CONTENTS_DEBRIS | CONTENTS_HITBOX;
+
 enum class launch_type {
   fire_setup,
   hand,
@@ -38,7 +41,7 @@ struct projectile_info {
   float release_delay = 0.0f;
   Vec3 offset{};
   Vec3 hull{};
-  int collision_mask = MASK_SOLID | CONTENTS_HITBOX;
+  unsigned int collision_mask = projectile_collision_mask;
   launch_type launch = launch_type::fire_setup;
   bool trace_launch = false;
   bool direct_hit = true;
@@ -54,6 +57,8 @@ struct target_seed {
   float current_fov = FLT_MAX;
   float distance = FLT_MAX;
   bool preferred = false;
+  bool fixed_aim_position_valid = false;
+  Vec3 fixed_aim_position{};
 };
 
 struct solution {
@@ -260,7 +265,6 @@ inline int weapon_id(Weapon* weapon) {
   switch (weapon->get_def_id()) {
   case Soldier_m_RocketLauncher:
   case Soldier_m_RocketLauncherR:
-  case Soldier_m_TheDirectHit:
   case Soldier_m_TheBlackBox:
   case Soldier_m_RocketJumper:
   case Soldier_m_TheLibertyLauncher:
@@ -271,6 +275,8 @@ inline int weapon_id(Weapon* weapon) {
   case Soldier_m_FestiveBlackBox:
   case Soldier_m_TheAirStrike:
     return TF_WEAPON_ROCKETLAUNCHER;
+  case Soldier_m_TheDirectHit:
+    return TF_WEAPON_ROCKETLAUNCHER_DIRECTHIT;
   case Soldier_s_TheRighteousBison:
     return TF_WEAPON_RAYGUN;
   case Demoman_m_GrenadeLauncher:
@@ -340,6 +346,18 @@ inline bool is_rocket_weapon(int weapon_id) {
     weapon_id == TF_WEAPON_ROCKETLAUNCHER_DIRECTHIT;
 }
 
+inline float game_convar_float(const char* name, float fallback) {
+  if (name == nullptr || convar_system == nullptr) {
+    return fallback;
+  }
+  Convar* var = convar_system->find_var(name);
+  if (var == nullptr) {
+    return fallback;
+  }
+  const float value = var->get_float();
+  return std::isfinite(value) && value >= 0.0f ? value : fallback;
+}
+
 inline bool get_info(Player* local, Weapon* weapon, projectile_info& out) {
   out = {};
   if (local == nullptr || weapon == nullptr) {
@@ -362,7 +380,7 @@ inline bool get_info(Player* local, Weapon* weapon, projectile_info& out) {
   case TF_WEAPON_PARTICLE_CANNON:
   case TF_WEAPON_ROCKETLAUNCHER_DIRECTHIT:
     out.speed = projectile_speed(weapon, 1100.0f);
-    out.splash_radius = weapon->get_def_id() == Soldier_m_TheDirectHit ? 70.0f :
+    out.splash_radius = id == TF_WEAPON_ROCKETLAUNCHER_DIRECTHIT ? 0.0f :
       (weapon->get_def_id() == Soldier_m_TheAirStrike ? 130.0f : 170.0f);
     out.offset = {23.5f, attribute(0.0f, "centerfire_projectile", weapon->to_entity()) != 0.0f ? 0.0f : 12.0f, weapon_z};
     out.trace_launch = true;
@@ -374,7 +392,7 @@ inline bool get_info(Player* local, Weapon* weapon, projectile_info& out) {
     out.speed = std::min(projectile_speed(weapon, 1200.0f), 3500.0f);
     out.gravity_mod = 1.0f;
     out.drag_mod = loch ? 0.07f : 0.11f;
-    out.life_time = iron_bomber ? 1.4f : 2.0f;
+    out.life_time = iron_bomber ? 1.4f : game_convar_float("tf_grenadelauncher_livetime", 0.8f);
     out.splash_radius = 146.0f;
     out.offset = {16.0f, 8.0f, -6.0f};
     out.hull = {2.0f, 2.0f, 2.0f};
@@ -613,6 +631,13 @@ inline Vec3 path_origin(const target_seed& seed, const movement_path& path, floa
   return seed.origin + seed.velocity * seconds;
 }
 
+inline Vec3 target_point(const target_seed& seed, const movement_path& path, float seconds) {
+  if (seed.fixed_aim_position_valid) {
+    return seed.fixed_aim_position;
+  }
+  return path_origin(seed, path, seconds) + seed.aim_offset;
+}
+
 inline bool build_move_path(const target_seed& seed, float max_time, movement_path& out) {
   out = {};
   if (seed.player == nullptr || game_movement == nullptr || move_helper == nullptr ||
@@ -837,7 +862,7 @@ inline bool launch_position(Player* local, const projectile_info& info, const Ve
         engine_trace->init_trace_filter(&filter, local->to_entity());
       }
       trace_t trace{};
-      engine_trace->trace_ray(&ray, MASK_SOLID, &filter, &trace);
+      engine_trace->trace_ray(&ray, projectile_collision_mask, &filter, &trace);
       if (trace.start_solid || trace.all_solid) {
         return false;
       }
@@ -877,9 +902,9 @@ inline bool launch_position(Player* local, const projectile_info& info, const Ve
     Vec3 trace_end = out;
     ray_t ray = engine_trace->init_ray(&trace_start, &trace_end, &mins, &maxs);
     trace_filter filter{};
-    engine_trace->init_world_trace_filter(&filter);
+    engine_trace->init_world_and_props_trace_filter(&filter);
     trace_t trace{};
-    engine_trace->trace_ray(&ray, MASK_SOLID_BRUSHONLY, &filter, &trace);
+    engine_trace->trace_ray(&ray, projectile_collision_mask, &filter, &trace);
     if (trace.start_solid || trace.all_solid || trace.fraction < 0.999f) {
       return false;
     }
@@ -1037,7 +1062,8 @@ inline bool projectile_fov_exceeds_limit(float fov) {
 }
 
 inline bool trace_projectile_segment(Player* local, const projectile_info& info,
-  const Vec3& start, const Vec3& end, bool ignore_friendly_players, trace_t& out) {
+  const Vec3& start, const Vec3& end, bool ignore_friendly_players,
+  Entity* ignored_target, trace_t& out) {
   if (engine_trace == nullptr || local == nullptr) {
     return false;
   }
@@ -1047,10 +1073,11 @@ inline bool trace_projectile_segment(Player* local, const projectile_info& info,
   Vec3 trace_end = end;
   ray_t ray = engine_trace->init_ray(&trace_start, &trace_end, &mins, &maxs);
   trace_filter filter{};
-  if (ignore_friendly_players) {
-    engine_trace->init_projectile_trace_filter(&filter, local);
+  if (ignore_friendly_players || ignored_target != nullptr) {
+    engine_trace->init_projectile_trace_filter(&filter, local->to_entity(),
+      ignored_target, ignored_target != nullptr);
   } else {
-    engine_trace->init_trace_filter(&filter, local);
+    engine_trace->init_trace_filter(&filter, local->to_entity());
   }
   out = {};
   engine_trace->trace_ray(&ray, info.collision_mask, &filter, &out);
@@ -1090,17 +1117,22 @@ inline bool reaches_target(Player* local, Weapon* weapon, const projectile_info&
     next.z += -0.5f * gravity * interval() * interval();
 
     trace_t trace{};
-    if (!trace_projectile_segment(local, info, position, next, ignore_friendly_players, trace)) {
+    if (!trace_projectile_segment(local, info, position, next, ignore_friendly_players,
+        seed.entity, trace)) {
       return false;
     }
 
-    const Vec3 target_position = path_origin(seed, path,
-      elapsed + info.release_delay + latency_seconds()) + seed.aim_offset;
+    const Vec3 target_position = target_point(seed, path,
+      elapsed + info.release_delay + latency_seconds());
     const bool near_target = point_segment_distance_squared(target_position, position, next) <= tolerance * tolerance;
     Entity* hit_entity = static_cast<Entity*>(trace.entity);
     if (hit_entity != nullptr) {
       if (same_entity(hit_entity, seed.entity)) {
-        return info.direct_hit || splash_allowed;
+        if (near_target) {
+          return info.direct_hit || splash_allowed;
+        }
+        position = next;
+        continue;
       }
       if (splash_allowed && point_segment_distance_squared(target_position, position, trace.endpos) <=
           (info.splash_radius + tolerance) * (info.splash_radius + tolerance)) {
@@ -1174,9 +1206,9 @@ inline bool reaches_splash_candidate(Player* local, Weapon* weapon, const projec
     Vec3 hull_maxs = info.hull;
     ray_t ray = engine_trace->init_ray(&trace_start, &trace_end, &hull_mins, &hull_maxs);
     trace_filter filter{};
-    engine_trace->init_world_trace_filter(&filter);
+    engine_trace->init_world_and_props_trace_filter(&filter);
     trace_t trace{};
-    engine_trace->trace_ray(&ray, MASK_SOLID, &filter, &trace);
+    engine_trace->trace_ray(&ray, projectile_collision_mask, &filter, &trace);
 
     const Vec3 moving_point = path_origin(seed, path,
       elapsed + info.release_delay + latency_seconds()) + seed.aim_offset;
@@ -1239,7 +1271,8 @@ inline bool solve_splash_target(Player* local, Weapon* weapon, const projectile_
   for (int index = 0; index < count; ++index) {
     const splash_candidate& candidate = candidates[index];
     target_seed candidate_seed = seed;
-    candidate_seed.aim_offset = candidate.point - seed.origin;
+    candidate_seed.fixed_aim_position_valid = true;
+    candidate_seed.fixed_aim_position = candidate.point;
     const solution candidate_solution = solve_target(local, weapon, info, candidate_seed, path);
     if (!candidate_solution.valid || !reaches_splash_candidate(
         local, weapon, info, candidate_seed, path, candidate_solution) ||
@@ -1260,7 +1293,7 @@ inline solution solve_target(Player* local, Weapon* weapon, const projectile_inf
   const target_seed& seed, const movement_path& path) {
   solution result{};
   const bool ignore_friendly_players = !is_rocket_weapon(weapon_id(weapon));
-  Vec3 point = seed.origin + seed.aim_offset;
+  Vec3 point = target_point(seed, path, 0.0f);
   Vec3 view_angles = aimbot_calculate_angles_to_position(local->get_shoot_pos(), point);
   float time = 0.0f;
   const float drag_factor = info.drag_mod > 0.0f ?
@@ -1287,7 +1320,7 @@ inline solution solve_target(Player* local, Weapon* weapon, const projectile_inf
     }
 
     const float target_time = time + info.release_delay + latency_seconds();
-    const Vec3 next_point = path_origin(seed, path, target_time) + seed.aim_offset;
+    const Vec3 next_point = target_point(seed, path, target_time);
     const float point_delta = distance_3d(next_point, point);
     point = next_point;
     if (point_delta <= 0.25f) {
@@ -1319,7 +1352,9 @@ inline solution solve_target(Player* local, Weapon* weapon, const projectile_inf
   result.valid = finite(view_angles) && finite(point) && std::isfinite(time);
   result.angles = aimbot_clamp_angles(view_angles);
   result.aim_position = point;
-  result.predicted_origin = point - seed.aim_offset;
+  result.predicted_origin = seed.fixed_aim_position_valid
+    ? path_origin(seed, path, time + info.release_delay + latency_seconds())
+    : point - seed.aim_offset;
   result.predicted_origin_valid = finite(result.predicted_origin);
   result.time = time;
   result.predicted_fov = aimbot_calculate_fov(result.angles,

@@ -56,7 +56,7 @@ std::string normalize_vmt(std::string vmt) {
 
 Material* material_manager::create_material(const std::string& name, const std::string& vmt) {
   if (key_values_system_original == nullptr || key_values_constructor_original == nullptr ||
-      key_values_load_from_buffer_original == nullptr || key_values_delete_this_original == nullptr || material_system == nullptr) {
+      key_values_load_from_buffer_original == nullptr || material_system == nullptr) {
     return nullptr;
   }
   auto* key_values = new KeyValues{name.c_str()};
@@ -64,7 +64,9 @@ Material* material_manager::create_material(const std::string& name, const std::
     key_values->delete_this();
     return nullptr;
   }
-  return material_system->create_material(name.c_str(), key_values);
+  Material* material = material_system->create_material(name.c_str(), key_values);
+  if (material == nullptr) key_values->delete_this();
+  return material;
 }
 
 void material_manager::release_material(material_definition& definition) {
@@ -145,9 +147,12 @@ bool material_manager::prepare() {
 bool material_manager::load() {
   const std::unique_lock lock{mutex_};
   if (!prepare_unlocked()) return false;
-  for (auto& [name, definition] : materials_) initialize_material(definition);
-  loaded_ = true;
-  return true;
+  loaded_ = false;
+  for (auto& [name, definition] : materials_) {
+    initialize_material(definition);
+    loaded_ = loaded_ || definition.material != nullptr;
+  }
+  return loaded_;
 }
 
 bool material_manager::reload() {
@@ -226,7 +231,11 @@ bool material_manager::add(const std::string& name) {
   store_material(name, vmt, false);
   if (loaded_) {
     initialize_material(materials_.at(name));
-    if (materials_.at(name).material == nullptr) loaded_ = false;
+    if (materials_.at(name).material == nullptr) {
+      loaded_ = std::ranges::any_of(materials_, [](const auto& entry) {
+        return entry.second.material != nullptr;
+      });
+    }
   }
   return true;
 }
@@ -246,7 +255,11 @@ bool material_manager::edit(const std::string& name, const std::string& vmt) {
   iterator->second.block_occluded = truthy_material_key(normalized_vmt, "$blockoccluded");
   if (loaded_) {
     initialize_material(iterator->second);
-    if (iterator->second.material == nullptr) loaded_ = false;
+    if (iterator->second.material == nullptr) {
+      loaded_ = std::ranges::any_of(materials_, [](const auto& entry) {
+        return entry.second.material != nullptr;
+      });
+    }
   }
   return true;
 }

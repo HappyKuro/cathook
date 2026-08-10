@@ -215,15 +215,16 @@ void draw_layer(const std::vector<chams_layer>& layers, const float distance, co
       continue;
     }
     const auto definition = materials.find(layer.material);
-    materials.set_color(definition ? &*definition : nullptr, color);
-    model_render->forced_material_override(definition ? definition->material : nullptr);
-    if (definition && definition->invert_cull) context->set_cull_mode(MATERIAL_CULLMODE_CW);
-    if (visible_pass && two_models && definition && definition->block_occluded) context->set_stencil_zfail_mode(STENCILOPERATION_REPLACE);
+    if (!definition || definition->material == nullptr) continue;
+    materials.set_color(&*definition, color);
+    model_render->forced_material_override(definition->material);
+    if (definition->invert_cull) context->set_cull_mode(MATERIAL_CULLMODE_CW);
+    if (visible_pass && two_models && definition->block_occluded) context->set_stencil_zfail_mode(STENCILOPERATION_REPLACE);
     rendering_effect = true;
     call_original(instance, state, info, bones);
     rendering_effect = false;
-    if (definition && definition->invert_cull) context->set_cull_mode(MATERIAL_CULLMODE_CCW);
-    if (visible_pass && two_models && definition && definition->block_occluded) context->set_stencil_zfail_mode(STENCILOPERATION_KEEP);
+    if (definition->invert_cull) context->set_cull_mode(MATERIAL_CULLMODE_CCW);
+    if (visible_pass && two_models && definition->block_occluded) context->set_stencil_zfail_mode(STENCILOPERATION_KEEP);
   }
 }
 
@@ -283,17 +284,46 @@ void store_glow(Entity* entity, const glow_settings& settings, const float dista
   }
 }
 
+bool glow_entity_valid(const glow_entity& item)
+{
+  if (item.entity == nullptr || entity_list == nullptr || item.info.entity_index <= 0) return false;
+  Entity* current = entity_list->entity_from_index(static_cast<unsigned int>(item.info.entity_index));
+  if (current != item.entity || current->is_dormant() || !current->should_draw()) return false;
+  if (current->get_class_id() == class_id::PLAYER && !reinterpret_cast<Player*>(current)->is_alive()) return false;
+  return true;
+}
+
 void draw_glow_entities(const glow_batch& batch, const int width, const int height, RenderContext* context)
 {
+  RGBA_float original_color{};
+  render_view->get_color_modulation(&original_color);
+  const float original_blend = render_view->get_blend();
+
+  model_render->forced_material_override(mat_glow_color);
+  context->set_stencil_enable(true);
+  context->set_stencil_reference_count(1);
+  context->set_stencil_write_mask(0xFF);
+  context->set_stencil_test_mask(0xFF);
+  context->set_stencil_compare_mode(STENCILCOMPARISONFUNCTION_ALWAYS);
+  context->set_stencil_pass_mode(STENCILOPERATION_REPLACE);
+  context->set_stencil_fail_mode(STENCILOPERATION_KEEP);
+  context->set_stencil_zfail_mode(STENCILOPERATION_REPLACE);
+  render_view->set_blend(0.0f);
+  for (const glow_entity& item : batch.entities) {
+    if (!glow_entity_valid(item)) continue;
+    rendering_effect = true;
+    call_original(model_render, item.state, item.info, item.bones);
+    rendering_effect = false;
+  }
+
   context->push_render_target_and_viewport();
   context->set_render_target(render_buffer_0);
   context->viewport(0, 0, width, height);
   context->clear_color4ub(0, 0, 0, 0);
   context->set_stencil_enable(false);
   context->clear_buffers(true, true, true);
-  model_render->forced_material_override(mat_glow_color);
   for (const glow_entity& item : batch.entities) {
-    if (item.entity == nullptr) continue;
+    if (!glow_entity_valid(item)) continue;
     materials.set_color(nullptr, item.color);
     rendering_effect = true;
     call_original(model_render, item.state, item.info, item.bones);
@@ -315,21 +345,34 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
     context->pop_render_target_and_viewport();
   }
 
+  render_view->set_color_modulation(&original_color);
+  render_view->set_blend(original_blend);
+  context->set_stencil_enable(true);
+  context->set_stencil_reference_count(0);
+  context->set_stencil_write_mask(0x0);
+  context->set_stencil_test_mask(0xFF);
+  context->set_stencil_compare_mode(STENCILCOMPARISONFUNCTION_EQUAL);
+  context->set_stencil_pass_mode(STENCILOPERATION_KEEP);
+  context->set_stencil_fail_mode(STENCILOPERATION_KEEP);
+  context->set_stencil_zfail_mode(STENCILOPERATION_KEEP);
+  auto draw_halo = [context, width, height](const int x, const int y) {
+    context->draw_screen_space_rectangle(mat_halo, x, y, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
+  };
   if (batch.settings.stencil > 0) {
     const int side = (batch.settings.stencil + 1) / 2;
-    context->draw_screen_space_rectangle(mat_halo, -side, 0, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
-    context->draw_screen_space_rectangle(mat_halo, side, 0, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
-    context->draw_screen_space_rectangle(mat_halo, 0, -side, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
-    context->draw_screen_space_rectangle(mat_halo, 0, side, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
+    draw_halo(-side, 0);
+    draw_halo(side, 0);
+    draw_halo(0, -side);
+    draw_halo(0, side);
     const int corner = batch.settings.stencil / 2;
     if (corner > 0) {
-      context->draw_screen_space_rectangle(mat_halo, -corner, -corner, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
-      context->draw_screen_space_rectangle(mat_halo, corner, corner, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
-      context->draw_screen_space_rectangle(mat_halo, corner, -corner, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
-      context->draw_screen_space_rectangle(mat_halo, -corner, corner, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
+      draw_halo(-corner, -corner);
+      draw_halo(corner, corner);
+      draw_halo(corner, -corner);
+      draw_halo(-corner, corner);
     }
   }
-  if (batch.settings.blur > 0.0f) context->draw_screen_space_rectangle(mat_halo, 0, 0, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
+  if (batch.settings.blur > 0.0f) draw_halo(0, 0);
   context->set_stencil_enable(false);
 }
 
@@ -373,7 +416,7 @@ void on_render_start()
   if (visual_groups::groups_need_model_effects()) ensure_resources();
 }
 
-void on_render_end()
+void on_post_screen_space_effects()
 {
   if (nographics::is_enabled()) {
     glow_batches.clear();
@@ -401,6 +444,11 @@ void on_render_end()
   model_render->forced_material_override(original_material, original_override);
   render_view->set_color_modulation(&original_color);
   render_view->set_blend(original_blend);
+  glow_batches.clear();
+}
+
+void on_render_end()
+{
   glow_batches.clear();
 }
 

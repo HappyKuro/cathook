@@ -426,7 +426,8 @@ auto should_recharge() -> bool
   if (!config.misc.exploits.tickbase
       || !config.misc.exploits.tickbase_recharge
       || g_state.in_shift_rebuild
-      || g_state.mode != shift_mode::none) {
+      || g_state.mode != shift_mode::none
+      || crit_hack::has_pending_queued_force()) {
     return false;
   }
 
@@ -752,7 +753,9 @@ void update_shift_state(user_cmd* cmd)
     return;
   }
 
-  if (crit_hack::should_hold_attack(cmd)) {
+  const auto crit_stats = crit_hack::get_stats();
+  if (crit_hack::should_hold_attack(cmd)
+      || crit_stats.queue == crit_hack::queue_state::releasing) {
     return;
   }
 
@@ -862,11 +865,14 @@ auto run_rebuilt_move(float accumulated_extra_samples, bool final_tick, bool for
       g_state.send_packet = g_state.processing_ticks <= g_state.shift_goal;
     }
 
-    if (!g_state.in_shift_rebuild
+    const bool should_choke_queued_crit = !config.misc.exploits.tickbase
+        && !g_state.in_shift_rebuild
         && !started_shift
         && crit_stats.queue == crit_hack::queue_state::waiting_for_seed
         && crit_hack::wants_queued_force(created_cmd)
-        && crit_hack::should_hold_attack(created_cmd)) {
+        && crit_hack::should_hold_attack(created_cmd);
+
+    if (should_choke_queued_crit) {
       g_state.send_packet = false;
     } else if (!g_state.in_shift_rebuild
         && crit_stats.queue == crit_hack::queue_state::releasing

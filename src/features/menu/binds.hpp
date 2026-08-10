@@ -102,6 +102,7 @@ struct bind_entry
   bool active{};
   bool toggle_state{};
   bool was_down{};
+  bool press_pending{};
   bool waiting{};
   bind_visibility visibility{ bind_visibility::always };
   double last_press_time{};
@@ -258,6 +259,21 @@ inline bool raw_key_down(const int key)
   return (mouse & SDL_BUTTON(button)) != 0;
 }
 
+inline void reset_input_state(const bool synchronize = false)
+{
+  std::lock_guard lock{ bind_mutex() };
+  keyboard_down().fill(false);
+  keyboard_seen().fill(false);
+  mouse_down().fill(false);
+  mouse_seen().fill(false);
+  for (bind_entry& entry : entries()) {
+    entry.press_pending = false;
+    entry.active = false;
+    entry.last_press_time = 0.0;
+    entry.was_down = synchronize ? raw_key_down(entry.key) : false;
+  }
+}
+
 inline void mark_dirty()
 {
   autosave_dirty() = true;
@@ -278,6 +294,7 @@ inline void set_menu_open(const bool open)
   menu_open_state() = open;
   for (bind_entry& entry : entries()) {
     entry.was_down = raw_key_down(entry.key);
+    entry.press_pending = false;
     entry.active = false;
     entry.last_press_time = 0.0;
   }
@@ -713,7 +730,7 @@ inline bool condition_active(bind_entry& entry)
       return false;
     }
     const bool down = raw_key_down(entry.key);
-    const bool pressed = down && !entry.was_down;
+    const bool pressed = std::exchange(entry.press_pending, false) || (down && !entry.was_down);
     switch (entry.key_mode) {
     case bind_key_mode::hold:
       result = down;
@@ -811,6 +828,15 @@ inline void handle_input(SDL_Event* event)
   if (event == nullptr) return;
   std::lock_guard lock{ bind_mutex() };
 
+  const bool focus_lost = (event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) ||
+    event->type == SDL_APP_WILLENTERBACKGROUND;
+  const bool focus_gained = (event->type == SDL_WINDOWEVENT && event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) ||
+    event->type == SDL_APP_DIDENTERFOREGROUND;
+  if (focus_lost || focus_gained) {
+    reset_input_state(focus_gained);
+    return;
+  }
+
   if (event->type == SDL_KEYDOWN || event->type == SDL_KEYUP) {
     const int scancode = static_cast<int>(event->key.keysym.scancode);
     if (scancode >= SDL_SCANCODE_UNKNOWN && scancode < SDL_NUM_SCANCODES) {
@@ -827,17 +853,28 @@ inline void handle_input(SDL_Event* event)
 
   if (disabled()) return;
 
+  if (!menu_open_state() && event->type == SDL_KEYDOWN && event->key.repeat == 0) {
+    const int scancode = static_cast<int>(event->key.keysym.scancode);
+    for (bind_entry& entry : entries()) {
+      if (entry.enabled && entry.condition == bind_condition::key && entry.key == scancode) {
+        entry.press_pending = true;
+      }
+    }
+  }
+
   for (bind_entry& entry : entries()) {
     if (!entry.waiting) continue;
     if (event->type == SDL_KEYDOWN && event->key.repeat == 0) {
       entry.key = event->key.keysym.sym == SDLK_ESCAPE ? static_cast<int>(SDLK_UNKNOWN) : static_cast<int>(event->key.keysym.scancode);
       entry.waiting = false;
       entry.was_down = entry.key != SDLK_UNKNOWN && raw_key_down(entry.key);
+      entry.press_pending = false;
       mark_dirty();
     } else if (event->type == SDL_MOUSEBUTTONDOWN) {
       entry.key = -static_cast<int>(event->button.button);
       entry.waiting = false;
       entry.was_down = raw_key_down(entry.key);
+      entry.press_pending = false;
       mark_dirty();
     }
   }
@@ -862,6 +899,7 @@ inline void run()
       entry.active = false;
       entry.toggle_state = false;
       entry.was_down = false;
+      entry.press_pending = false;
     }
     return;
   }
@@ -958,6 +996,7 @@ inline void draw_popup()
       entry->key_mode = static_cast<bind_key_mode>(mode);
       entry->toggle_state = false;
       entry->was_down = false;
+      entry->press_pending = false;
       mark_dirty();
     }
     if (ImGui::Checkbox("Enabled", &entry->enabled)) mark_dirty();

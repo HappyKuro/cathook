@@ -172,9 +172,9 @@ public:
         Vec3 end = probe + direction * (radius + hull_length + 2.0f);
         ray_t ray = engine_trace->init_ray(&start, &end);
         trace_filter filter{};
-        engine_trace->init_world_trace_filter(&filter);
+        engine_trace->init_world_and_props_trace_filter(&filter);
         trace_t trace{};
-        engine_trace->trace_ray(&ray, MASK_SOLID, &filter, &trace);
+        engine_trace->trace_ray(&ray, MASK_SOLID | CONTENTS_DEBRIS, &filter, &trace);
         if (trace.fraction >= 1.0f || trace.start_solid || trace.all_solid || (trace.surface.flags & 0x0004u)) {
           continue;
         }
@@ -213,9 +213,9 @@ public:
     Vec3 end = nearest;
     ray_t ray = engine_trace->init_ray(&start, &end);
     trace_filter filter{};
-    engine_trace->init_world_trace_filter(&filter);
+    engine_trace->init_world_and_props_trace_filter(&filter);
     trace_t trace{};
-    engine_trace->trace_ray(&ray, MASK_SHOT & ~CONTENTS_HITBOX, &filter, &trace);
+    engine_trace->trace_ray(&ray, MASK_SOLID | CONTENTS_DEBRIS, &filter, &trace);
     return trace.fraction >= 1.0f && !trace.start_solid && !trace.all_solid;
   }
 };

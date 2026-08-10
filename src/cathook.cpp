@@ -90,6 +90,7 @@ bool (*in_cond_original)(void*, int) = nullptr;
 #include "core/hooks/cl_read_packets.cpp"
 #include "core/hooks/cl_move.cpp"
 #include "core/hooks/client_mode_create_move.cpp"
+#include "core/hooks/client_mode_post_screen_space_effects.cpp"
 #include "core/hooks/client_create_move.cpp"
 #include "features/visuals/groups/visual_groups.cpp"
 #include "features/visuals/material_manager.cpp"
@@ -722,6 +723,7 @@ void clear_runtime_pointer_state()
   model_render_draw_model_execute_original = nullptr;
   entity_visuals::draw_model_execute_original = nullptr;
   client_mode_create_move_original = nullptr;
+  client_mode_post_screen_space_effects_original = nullptr;
   client_create_move_original = nullptr;
   override_view_original = nullptr;
   draw_view_model_original = nullptr;
@@ -802,6 +804,11 @@ bool unload_module_runtime() {
 
   if (client_mode_vtable != nullptr && client_mode_create_move_original != nullptr && !write_to_table(client_mode_vtable, 22, (void*)client_mode_create_move_original)) {
     print("ClientMode::CreateMove failed to restore hook\n");
+  }
+
+  if (client_mode_vtable != nullptr && client_mode_post_screen_space_effects_original != nullptr &&
+      !write_to_table(client_mode_vtable, 40, (void*)client_mode_post_screen_space_effects_original)) {
+    print("ClientMode::DoPostScreenSpaceEffects failed to restore hook\n");
   }
 
   if (client_vtable != nullptr && client_create_move_original != nullptr && !write_to_table(client_vtable, 21, (void*)client_create_move_original)) {
@@ -1377,6 +1384,15 @@ bool initialize_game_runtime() {
     print("ModelRender::DrawModelExecute hook failed\n");
   } else {
     print("ModelRender::DrawModelExecute hooked\n");
+  }
+
+  client_mode_post_screen_space_effects_original = reinterpret_cast<bool (*)(void*, const view_setup*)>(
+    read_vtable_entry(client_mode_vtable, 40, "ClientModeShared::DoPostScreenSpaceEffects"));
+  if (client_mode_post_screen_space_effects_original == nullptr || !write_to_table(
+        client_mode_vtable, 40, (void*)client_mode_post_screen_space_effects_hook)) {
+    print("ClientModeShared::DoPostScreenSpaceEffects hook failed\n");
+  } else {
+    print("ClientModeShared::DoPostScreenSpaceEffects hooked\n");
   }
 
   client_mode_create_move_original = reinterpret_cast<bool (*)(void*, float, user_cmd*)>(read_vtable_entry(client_mode_vtable, 22, "ClientModeShared::CreateMove"));
