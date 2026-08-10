@@ -28,6 +28,8 @@ Material* mat_blur_y = nullptr;
 MaterialVar* bloom_amount = nullptr;
 Texture* render_buffer_0 = nullptr;
 Texture* render_buffer_1 = nullptr;
+std::vector<Material*> retired_materials{};
+std::vector<Texture*> retired_textures{};
 int resource_width = 0;
 int resource_height = 0;
 bool resources_ready = false;
@@ -132,6 +134,25 @@ void release_resources()
   if (mat_blur_y != nullptr) mat_blur_y->decrement_reference_count();
   if (render_buffer_0 != nullptr) render_buffer_0->decrement_reference_count();
   if (render_buffer_1 != nullptr) render_buffer_1->decrement_reference_count();
+  for (Material* material : retired_materials) {
+    if (material != nullptr) material->decrement_reference_count();
+  }
+  for (Texture* texture : retired_textures) {
+    if (texture != nullptr) texture->decrement_reference_count();
+  }
+  retired_materials.clear();
+  retired_textures.clear();
+  reset_resource_handles();
+}
+
+void retire_resources()
+{
+  if (mat_glow_color != nullptr) retired_materials.emplace_back(mat_glow_color);
+  if (mat_halo != nullptr) retired_materials.emplace_back(mat_halo);
+  if (mat_blur_x != nullptr) retired_materials.emplace_back(mat_blur_x);
+  if (mat_blur_y != nullptr) retired_materials.emplace_back(mat_blur_y);
+  if (render_buffer_0 != nullptr) retired_textures.emplace_back(render_buffer_0);
+  if (render_buffer_1 != nullptr) retired_textures.emplace_back(render_buffer_1);
   reset_resource_handles();
 }
 
@@ -140,11 +161,11 @@ bool ensure_resources()
   if (engine == nullptr || material_system == nullptr || !engine->is_in_game() || engine->is_drawing_loading_image()) return false;
   const Vec2 screen = engine->get_screen_size();
   if (screen.x <= 0 || screen.y <= 0) {
-    if (resources_ready) release_resources();
+    if (resources_ready) retire_resources();
     return false;
   }
   if (resources_ready && (resource_width != static_cast<int>(screen.x) || resource_height != static_cast<int>(screen.y))) {
-    release_resources();
+    retire_resources();
   }
   if (resources_ready) {
     if (!materials.loaded()) materials.load();
@@ -178,7 +199,7 @@ bool ensure_resources()
     resource_width = static_cast<int>(screen.x);
     resource_height = static_cast<int>(screen.y);
   } else {
-    release_resources();
+    retire_resources();
   }
   return resources_ready;
 }

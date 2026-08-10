@@ -32,6 +32,18 @@ bool truthy_material_key(const std::string& vmt, const char* key) {
   return value != std::string::npos && lower.compare(value, 1, "0") != 0;
 }
 
+std::string normalize_vmt(std::string vmt) {
+  const std::string lower = lower_copy(vmt);
+  if ((lower.find("vertexlitgeneric") == std::string::npos && lower.find("unlitgeneric") == std::string::npos) ||
+      lower.find("$basetexture") != std::string::npos) {
+    return vmt;
+  }
+  const std::size_t closing_brace = vmt.rfind('}');
+  if (closing_brace == std::string::npos) return vmt;
+  vmt.insert(closing_brace, "\n\t$basetexture \"white\"\n");
+  return vmt;
+}
+
 }
 
 Material* material_manager::create_material(const std::string& name, const std::string& vmt) {
@@ -55,6 +67,14 @@ void material_manager::release_material(material_definition& definition) {
   definition.envmap_tint = nullptr;
 }
 
+void material_manager::retire_material(material_definition& definition) {
+  if (definition.material == nullptr) return;
+  definition.phong_tint = nullptr;
+  definition.envmap_tint = nullptr;
+  retired_materials_.emplace_back(std::move(definition));
+  definition = {};
+}
+
 void material_manager::initialize_material(material_definition& definition) {
   if (definition.material != nullptr) return;
   definition.material = create_material(
@@ -71,7 +91,7 @@ void material_manager::initialize_material(material_definition& definition) {
 void material_manager::store_material(const std::string& name, const std::string& vmt, const bool locked) {
   material_definition definition{};
   definition.name = name;
-  definition.vmt = vmt;
+  definition.vmt = normalize_vmt(vmt);
   definition.locked = locked;
   definition.invert_cull = truthy_material_key(vmt, "$invertcull");
   definition.block_occluded = truthy_material_key(vmt, "$blockoccluded");
@@ -123,7 +143,7 @@ bool material_manager::load() {
 
 bool material_manager::reload() {
   const std::unique_lock lock{mutex_};
-  for (auto& [name, definition] : materials_) release_material(definition);
+  for (auto& [name, definition] : materials_) retire_material(definition);
   materials_.clear();
   prepared_ = false;
   loaded_ = false;
@@ -133,7 +153,9 @@ bool material_manager::reload() {
 void material_manager::shutdown() {
   const std::unique_lock lock{mutex_};
   for (auto& [name, definition] : materials_) release_material(definition);
+  for (auto& definition : retired_materials_) release_material(definition);
   materials_.clear();
+  retired_materials_.clear();
   prepared_ = false;
   loaded_ = false;
 }
@@ -145,7 +167,13 @@ void material_manager::abandon() {
     definition.phong_tint = nullptr;
     definition.envmap_tint = nullptr;
   }
+  for (auto& definition : retired_materials_) {
+    definition.material = nullptr;
+    definition.phong_tint = nullptr;
+    definition.envmap_tint = nullptr;
+  }
   materials_.clear();
+  retired_materials_.clear();
   prepared_ = false;
   loaded_ = false;
 }
@@ -182,7 +210,7 @@ std::filesystem::path material_manager::directory() const {
 bool material_manager::add(const std::string& name) {
   const std::unique_lock lock{mutex_};
   if (!valid_name(name) || name == "Original" || materials_.contains(name) || !prepare_unlocked()) return false;
-  const std::string vmt{"\"VertexLitGeneric\"\n{\n\t\n}"};
+  const std::string vmt{"\"VertexLitGeneric\"\n{\n\t$basetexture \"white\"\n}"};
   std::ofstream stream{directory() / (name + ".vmt"), std::ios::binary | std::ios::trunc};
   stream << vmt;
   if (!stream.good()) return false;
@@ -198,13 +226,15 @@ bool material_manager::edit(const std::string& name, const std::string& vmt) {
   const std::unique_lock lock{mutex_};
   const auto iterator = materials_.find(name);
   if (iterator == materials_.end() || iterator->second.locked || vmt.empty()) return false;
+  const std::string normalized_vmt = normalize_vmt(vmt);
   std::ofstream stream{directory() / (name + ".vmt"), std::ios::binary | std::ios::trunc};
-  stream << vmt;
+  stream << normalized_vmt;
   if (!stream.good()) return false;
-  release_material(iterator->second);
-  iterator->second.vmt = vmt;
-  iterator->second.invert_cull = truthy_material_key(vmt, "$invertcull");
-  iterator->second.block_occluded = truthy_material_key(vmt, "$blockoccluded");
+  retire_material(iterator->second);
+  iterator->second.name = name;
+  iterator->second.vmt = normalized_vmt;
+  iterator->second.invert_cull = truthy_material_key(normalized_vmt, "$invertcull");
+  iterator->second.block_occluded = truthy_material_key(normalized_vmt, "$blockoccluded");
   if (loaded_) {
     initialize_material(iterator->second);
     if (iterator->second.material == nullptr) loaded_ = false;
@@ -216,7 +246,7 @@ bool material_manager::remove(const std::string& name) {
   const std::unique_lock lock{mutex_};
   const auto iterator = materials_.find(name);
   if (iterator == materials_.end() || iterator->second.locked) return false;
-  release_material(iterator->second);
+  retire_material(iterator->second);
   materials_.erase(iterator);
   std::error_code error{};
   return std::filesystem::remove(directory() / (name + ".vmt"), error) && !error;

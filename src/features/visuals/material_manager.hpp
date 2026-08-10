@@ -43,6 +43,7 @@ public:
 
 private:
   std::unordered_map<std::string, material_definition> materials_{};
+  std::vector<material_definition> retired_materials_{};
   mutable std::shared_mutex mutex_{};
   bool prepared_ = false;
   bool loaded_ = false;
@@ -54,6 +55,7 @@ private:
   void add_builtin_materials();
   bool prepare_unlocked();
   static void release_material(material_definition& definition);
+  void retire_material(material_definition& definition);
 };
 
 inline material_manager materials{};
