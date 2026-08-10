@@ -190,6 +190,8 @@ constexpr const char* client_achievement_mgr_post_init =
   "55 48 89 E5 41 57 41 56 41 55 49 89 FD 41 54 48 8D 3D ? ? ? ? 53 48 83 EC 28 E8 ? ? ? ? 84 C0";
 constexpr const char* client_objective_flag_countdown_update =
   "49 8B BC 24 ? ? ? ? 48 8B 07 FF 90 ? ? ? ? 84 C0 0F 85 ? ? ? ? 49 8B 06 48 85 C0 74 ?";
+constexpr const char* load_named_skys =
+  "48 8D 05 ? ? ? ? 55 48 8D 15 ? ? ? ? 66 48 0F 6E C8 48 89 E5 41 57 48 8D 05 ? ? ? ? 41 56 66 48 0F 6E C2 41 55";
 
 }
 #endif

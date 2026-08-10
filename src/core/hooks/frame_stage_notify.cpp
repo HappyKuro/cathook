@@ -28,6 +28,7 @@ V  o o  V  file: src/core/hooks/frame_stage_notify.cpp
 #include "features/combat/backtrack/backtrack.hpp"
 #include "features/automation/navbot/navbot_controller.hpp"
 #include "features/visuals/thirdperson.hpp"
+#include "features/visuals/skybox_changer.hpp"
 #include "features/visuals/groups/visual_groups.hpp"
 #include "core/print.hpp"
 
@@ -106,6 +107,29 @@ void run_match_exec_on_level_change()
 
   last_match_exec_level = level_name;
   cathook::core::execute_cfg_file("cat_matchexec", "cat_matchexec");
+}
+
+void run_skybox_changer()
+{
+  static std::string last_level{};
+
+  if (engine == nullptr || !engine->is_in_game()) {
+    last_level.clear();
+    skybox_changer::invalidate();
+    return;
+  }
+
+  const char* level_name = engine->get_level_name();
+  if (level_name == nullptr || level_name[0] == '\0') {
+    return;
+  }
+
+  if (last_level != level_name) {
+    last_level = level_name;
+    skybox_changer::invalidate();
+  }
+
+  skybox_changer::update();
 }
 
 }
@@ -285,6 +309,7 @@ void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
 
   if (current_stage == FRAME_NET_UPDATE_END) {
     run_match_exec_on_level_change();
+    run_skybox_changer();
     cat_ipc::client::tick();
     cathook::core::identify::tick();
     cathook::core::players::tick();

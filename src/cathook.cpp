@@ -136,6 +136,7 @@ bool (*in_cond_original)(void*, int) = nullptr;
 #include "features/visuals/spectator_list.cpp"
 #include "features/visuals/thirdperson.cpp"
 #include "features/visuals/radar/radar.cpp"
+#include "features/visuals/skybox_changer.cpp"
 
 void** client_mode_vtable;
 void** model_render_vtable;
@@ -1409,6 +1410,8 @@ bool initialize_game_runtime() {
     print("Client::CreateMove hooked\n");
   }
 #if !defined(CATHOOK_TEXTMODE) || !CATHOOK_TEXTMODE
+
+  skybox_changer::resolve_load_named_skys();
 
   override_view_original = reinterpret_cast<void (*)(void*, view_setup*)>(read_vtable_entry(client_mode_vtable, 17, "ClientModeShared::OverrideView"));
   if (override_view_original == nullptr || !write_to_table(client_mode_vtable, 17, (void*)override_view_hook)) {

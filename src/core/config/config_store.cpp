@@ -194,6 +194,20 @@ std::vector<std::string> config_store::list_files() const
     return names;
 }
 
+std::vector<std::string> config_store::keys() const
+{
+    std::vector<std::string> names{};
+    names.reserve(m_values.size());
+
+    for (const auto& entry : m_values)
+    {
+        names.emplace_back(entry.first);
+    }
+
+    std::ranges::sort(names);
+    return names;
+}
+
 const std::string& config_store::current_name() const
 {
     return m_current_name;
@@ -441,6 +455,7 @@ void config_store::import_config(const Config& config)
     set_bool("visuals.radar.use_icons", config.visuals.radar.use_icons);
     set_bool("visuals.radar.axis_lines", config.visuals.radar.axis_lines);
     set_int("visuals.radar.range_rings", config.visuals.radar.range_rings);
+    set_int("visuals.skybox_changer_index", config.visuals.skybox_changer_index);
     set_bool("visuals.override_fov", config.visuals.override_fov);
     set_float("visuals.custom_fov", config.visuals.custom_fov);
     set_bool("visuals.override_zoom_fov", config.visuals.override_zoom_fov);
@@ -1040,6 +1055,8 @@ void config_store::export_config(Config& config) const
     config.visuals.radar.axis_lines = get_bool("visuals.radar.axis_lines", config.visuals.radar.axis_lines);
     config.visuals.radar.range_rings = std::clamp(
         get_int("visuals.radar.range_rings", config.visuals.radar.range_rings), 0, 8);
+    config.visuals.skybox_changer_index = std::clamp(
+        get_int("visuals.skybox_changer_index", config.visuals.skybox_changer_index), 0, 31);
     config.visuals.override_fov = get_bool("visuals.override_fov", config.visuals.override_fov);
     config.visuals.custom_fov = get_float("visuals.custom_fov", config.visuals.custom_fov);
     config.visuals.override_zoom_fov = get_bool("visuals.override_zoom_fov", config.visuals.override_zoom_fov);
