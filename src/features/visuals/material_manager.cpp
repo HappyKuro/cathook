@@ -39,8 +39,6 @@ Material* material_manager::create_material(const std::string& name, const std::
     return nullptr;
   }
   auto* key_values = new KeyValues{name.c_str()};
-  // Pass user VMTs through unchanged. Injecting cloak keys and an empty
-  // proxy block produces shader snapshots the engine cannot safely restore.
   if (!key_values->load_from_buffer(name.c_str(), vmt.c_str())) {
     delete key_values;
     return nullptr;

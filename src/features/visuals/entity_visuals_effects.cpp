@@ -137,9 +137,6 @@ void release_resources()
 
 bool ensure_resources()
 {
-  // During loading and video/shader resets the material system may expose
-  // objects whose shader snapshots are not valid yet. Do not create or
-  // release our resources in that window; the engine owns reset/restore.
   if (engine == nullptr || material_system == nullptr || !engine->is_in_game() || engine->is_drawing_loading_image()) return false;
   const Vec2 screen = engine->get_screen_size();
   if (screen.x <= 0 || screen.y <= 0) {

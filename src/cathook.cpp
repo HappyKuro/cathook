@@ -1543,11 +1543,13 @@ bool initialize_game_runtime() {
   rv = funchook_prepare(funchook, (void**)&item_definition_lookup_original, (void*)item_definition_lookup_hook);
   error_assert(rv != 0, "Failed to prepare item definition lookup hook\n");
 
-  rv = funchook_prepare(
-    funchook,
-    (void**)&attribute_hook_value_float_original,
-    (void*)inventory_changer::attribute_hook_value_float_hook);
-  error_assert(rv != 0, "Failed to prepare float attribute hook\n");
+  if (config.misc.inventory_changer.enabled) {
+    rv = funchook_prepare(
+      funchook,
+      (void**)&attribute_hook_value_float_original,
+      (void*)inventory_changer::attribute_hook_value_float_hook);
+    error_assert(rv != 0, "Failed to prepare float attribute hook\n");
+  }
 
   rv = funchook_prepare(funchook, (void**)&inspect_target_check_original, (void*)inspect_target_check_hook);
   error_assert(rv != 0, "Failed to prepare inspect target check hook\n");

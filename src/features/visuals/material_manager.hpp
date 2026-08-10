@@ -28,8 +28,6 @@ public:
   bool load();
   bool reload();
   void shutdown();
-  // Drop local handles without calling into the renderer. Used when the
-  // graphics context is unavailable during detach.
   void abandon();
 
   [[nodiscard]] std::optional<material_definition> find(const std::string& name) const;
