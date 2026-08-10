@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include "core/math/math.hpp"
 #include "core/player_manager.hpp"
 #include "features/combat/anti_aim/anti_aim.hpp"
 #include "features/combat/aimbot/aimbot.hpp"
@@ -23,6 +24,7 @@ namespace
 {
 
 constexpr std::size_t visual_group_not_found = static_cast<std::size_t>(-1);
+constexpr float dormant_esp_min_distance_hu = 600.0f;
 
 }
 
@@ -709,6 +711,9 @@ thread_local bool g_viewmodel_model = false;
 
   const bool dormant = entity->is_dormant();
   if (dormant && !config.visuals.dormant_esp) {
+    return false;
+  }
+  if (!models && dormant && distance_3d(entity->get_collision_origin(), localplayer->get_collision_origin()) < dormant_esp_min_distance_hu) {
     return false;
   }
   if ((group.conditions & visual_group::condition_dormant) != 0) {

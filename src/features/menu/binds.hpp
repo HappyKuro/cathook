@@ -662,6 +662,15 @@ inline void capture_menu_changes()
 {
   for (target_entry& target : targets()) {
     if (target.target == nullptr || !target.baseline_initialized) continue;
+
+    // A render/menu transition can happen between two create-move calls. In
+    // that case the target may still be marked as overridden when the menu is
+    // closed. Never promote the runtime override to the user baseline.
+    if (target.overridden) {
+      write_value(target, target.baseline);
+      target.overridden = false;
+    }
+
     const bind_value current = read_value(target);
     if (!values_equal(current, target.last_effective)) target.baseline = current;
     target.last_effective = current;
