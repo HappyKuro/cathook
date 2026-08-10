@@ -24,9 +24,22 @@ export PATH
 
 exec 9>"$start_lock"
 if ! flock -n 9; then
-    echo "botpanel/start is already running. Stop the other ./start process first." >&2
-    exit 1
+    lock_holder="$(head -n1 "$start_lock" 2>/dev/null | tr -cd '0-9')"
+    if [ -n "$lock_holder" ] && kill -0 "$lock_holder" 2>/dev/null; then
+        echo "botpanel/start is already running (pid $lock_holder). Stop it first." >&2
+        exit 1
+    fi
+
+    echo "note: clearing a stale start lock left by a previous run's daemons" >&2
+    exec 9>&-
+    rm -f "$start_lock"
+    exec 9>"$start_lock"
+    if ! flock -n 9; then
+        echo "botpanel/start could not take the start lock." >&2
+        exit 1
+    fi
 fi
+printf '%s\n' "$$" >&9
 
 if [ "$requested_visible_windows" = "1" ]; then
     visible_windows=1
@@ -1074,7 +1087,7 @@ start_xvfb() {
 
     : >"$xvfb_log"
     echo "Starting Xvfb display $display with max clients $xvfb_max_clients..."
-    Xvfb "$display" -screen 0 "$xvfb_screen_size" -maxclients "$xvfb_max_clients" -nolisten tcp -noreset -ac >"$xvfb_log" 2>&1 &
+    Xvfb "$display" -screen 0 "$xvfb_screen_size" -maxclients "$xvfb_max_clients" -nolisten tcp -noreset -ac >"$xvfb_log" 2>&1 9>&- &
     echo "$!" >"$xvfb_pid_file"
     sleep 1
 
@@ -1122,7 +1135,7 @@ start_ipc_server() {
         exit 1
     fi
 
-    "$install_root/ipc/bin/server" -s --reset >/tmp/cat-ipc-server.log 2>&1 &
+    "$install_root/ipc/bin/server" -s --reset >/tmp/cat-ipc-server.log 2>&1 9>&- &
     ipc_server_pid=$!
     echo "$ipc_server_pid" >/tmp/cat-ipc-server.pid
     disown "$ipc_server_pid" 2>/dev/null || true
@@ -1142,11 +1155,11 @@ start_ipc_server() {
 
 start_detached_panel() {
     if command -v setsid >/dev/null 2>&1; then
-        nohup setsid "$@" >/dev/null 2>&1 &
+        nohup setsid "$@" >/dev/null 2>&1 9>&- &
         return
     fi
 
-    nohup "$@" >/dev/null 2>&1 &
+    nohup "$@" >/dev/null 2>&1 9>&- &
 }
 
 warn_if_steam_missing() {
