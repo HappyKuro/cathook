@@ -34,13 +34,21 @@ bool truthy_material_key(const std::string& vmt, const char* key) {
 
 std::string normalize_vmt(std::string vmt) {
   const std::string lower = lower_copy(vmt);
-  if ((lower.find("vertexlitgeneric") == std::string::npos && lower.find("unlitgeneric") == std::string::npos) ||
-      lower.find("$basetexture") != std::string::npos) {
+  if (lower.find("$model") != std::string::npos &&
+      (lower.find("vertexlitgeneric") == std::string::npos && lower.find("unlitgeneric") == std::string::npos ||
+       lower.find("$basetexture") != std::string::npos)) {
     return vmt;
   }
   const std::size_t closing_brace = vmt.rfind('}');
   if (closing_brace == std::string::npos) return vmt;
-  vmt.insert(closing_brace, "\n\t$basetexture \"white\"\n");
+  std::string additions{};
+  if (lower.find("$model") == std::string::npos) additions += "\n\t$model \"1\"";
+  if ((lower.find("vertexlitgeneric") != std::string::npos || lower.find("unlitgeneric") != std::string::npos) &&
+      lower.find("$basetexture") == std::string::npos) {
+    additions += "\n\t$basetexture \"white\"";
+  }
+  if (additions.empty()) return vmt;
+  vmt.insert(closing_brace, additions + "\n");
   return vmt;
 }
 
