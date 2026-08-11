@@ -97,6 +97,8 @@ public:
   int flags_ = 0;
 };
 
+static_assert(sizeof(command_base) == 0x30, "command_base must match ConCommandBase");
+
 class command final : public command_base
 {
 public:
@@ -117,7 +119,14 @@ public:
 
 private:
   command_callback_t callback_ = nullptr;
+
+  void* completion_callback_ = nullptr;
+  bool has_completion_callback_ = false;
+  bool using_new_command_callback_ = false;
+  bool using_command_callback_interface_ = false;
 };
+
+static_assert(sizeof(command) == 0x48, "command must match Source ConCommand size");
 
 inline std::vector<std::unique_ptr<command>>& registered_commands() {
   static std::vector<std::unique_ptr<command>> value{};
