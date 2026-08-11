@@ -967,6 +967,20 @@ void reset_path_spin_state()
   g_path_spin_state.crumb_index = std::numeric_limits<size_t>::max();
 }
 
+struct path_look_silent_state
+{
+  bool active = false;
+  float pitch = 0.0f;
+  float yaw = 0.0f;
+};
+
+path_look_silent_state g_path_look_silent_state{};
+
+void reset_path_look_silent_state()
+{
+  g_path_look_silent_state = {};
+}
+
 bool path_spin_trigger_matches(user_cmd* user_cmd, const std::vector<crumb>& crumbs, size_t current_index)
 {
   if (current_index >= crumbs.size() || crumbs[current_index].kind == crumb_kind::destination)
@@ -1092,21 +1106,44 @@ bool apply_look_at_path(Player* localplayer, user_cmd* user_cmd, const std::vect
 
   const int slow_aim = std::clamp(config.misc.automation.navbot_look_at_path_speed, 1, 100);
   const float desired_yaw = std::atan2(delta_y, delta_x) * radpi;
-  const float yaw_delta = normalize_angle_180(desired_yaw - user_cmd->view_angles.y);
-  const float pitch_delta = -user_cmd->view_angles.x;
 
-  user_cmd->view_angles.x = std::clamp(user_cmd->view_angles.x + (pitch_delta / slow_aim), -89.0f, 89.0f);
-  user_cmd->view_angles.y = normalize_angle_180(user_cmd->view_angles.y + (yaw_delta / slow_aim));
+  const bool silent = config.misc.automation.navbot_look_at_path_silent;
+  if (!silent)
+  {
+    reset_path_look_silent_state();
+  }
+
+  if (silent && !g_path_look_silent_state.active)
+  {
+    g_path_look_silent_state.active = true;
+    g_path_look_silent_state.pitch = user_cmd->view_angles.x;
+    g_path_look_silent_state.yaw = user_cmd->view_angles.y;
+  }
+
+  const float current_pitch = silent ? g_path_look_silent_state.pitch : user_cmd->view_angles.x;
+  const float current_yaw = silent ? g_path_look_silent_state.yaw : user_cmd->view_angles.y;
+  const float yaw_delta = normalize_angle_180(desired_yaw - current_yaw);
+  const float pitch_delta = -current_pitch;
+
+  user_cmd->view_angles.x = std::clamp(current_pitch + (pitch_delta / slow_aim), -89.0f, 89.0f);
+  user_cmd->view_angles.y = normalize_angle_180(current_yaw + (yaw_delta / slow_aim));
   user_cmd->view_angles.z = 0.0f;
 
-  if (!config.misc.automation.navbot_look_at_path_silent && prediction != nullptr)
+  if (silent)
+  {
+    g_path_look_silent_state.pitch = user_cmd->view_angles.x;
+    g_path_look_silent_state.yaw = user_cmd->view_angles.y;
+    return true;
+  }
+
+  if (prediction != nullptr)
   {
     Vec3 predicted_angles = user_cmd->view_angles;
     prediction->set_local_view_angles(predicted_angles);
     prediction->set_view_angles(predicted_angles);
   }
 
-  if (!config.misc.automation.navbot_look_at_path_silent && engine != nullptr)
+  if (engine != nullptr)
   {
     Vec3 engine_angles = user_cmd->view_angles;
     engine->set_view_angles(engine_angles);
@@ -1128,6 +1165,7 @@ void navbot_controller::apply_post_anti_aim(user_cmd* user_cmd)
     if (!config.misc.automation.navbot_look_at_path)
     {
       reset_path_spin_state();
+      reset_path_look_silent_state();
     }
     return;
   }
@@ -1183,6 +1221,7 @@ void navbot_controller::clear_runtime_state()
   suppress_aimbot_for_reload_ = false;
   silent_path_look_ = false;
   silent_path_look_angles_ = {};
+  reset_path_look_silent_state();
   reset_debug_runtime(debug_state_);
 }
 
