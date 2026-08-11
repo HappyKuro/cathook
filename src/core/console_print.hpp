@@ -1,3 +1,9 @@
+/*
+data: 2026-08-10
+file: src/core/console_print.hpp
+author: HappyKuro
+*/
+// Note: Original made by HappyKuro, modified by pupnoodle
 #ifndef CATHOOK_CONSOLE_PRINT_HPP
 #define CATHOOK_CONSOLE_PRINT_HPP
 

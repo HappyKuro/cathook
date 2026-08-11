@@ -1,3 +1,9 @@
+/*
+data: 2026-08-10
+file: src/core/developer_console_config.hpp
+author: HappyKuro
+*/
+// Note: Original made by HappyKuro, modified by pupnoodle
 #ifndef CATHOOK_DEVELOPER_CONSOLE_CONFIG_HPP
 #define CATHOOK_DEVELOPER_CONSOLE_CONFIG_HPP
 

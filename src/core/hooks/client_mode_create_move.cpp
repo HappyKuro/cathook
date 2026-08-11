@@ -156,6 +156,7 @@ static move_features_result run_move_features(user_cmd* user_cmd) {
   bhop(user_cmd);
   followbot::controller().on_create_move(user_cmd);
   navbot::controller().on_create_move(user_cmd);
+  navbot::controller().apply_post_anti_aim(user_cmd);
   medic_automation::controller().on_post_navbot_create_move(user_cmd);
   const bool suppress_aimbot_for_reload = navbot::controller().should_suppress_aimbot();
   const bool suppress_aimbot_for_medic = medic_automation::controller().should_suppress_aimbot();
@@ -181,6 +182,7 @@ static move_features_result run_move_features(user_cmd* user_cmd) {
   } else if (aimbot_should_clear_autoreload()) {
     user_cmd->buttons &= ~IN_RELOAD;
   }
+  const Vec3 pre_aimbot_view_angles = user_cmd->view_angles;
 
   aimbot_note_render_clock();
   start_engine_prediction(user_cmd);
@@ -208,7 +210,7 @@ static move_features_result run_move_features(user_cmd* user_cmd) {
   const crit_hack::create_move_result crit_result = crit_hack::on_create_move(user_cmd, aimbot_result.requested_shot);
   result.attack_suppressed = crit_result.attack_suppressed;
   if (crit_result.attack_suppressed && aimbot_result.psilent_command) {
-    user_cmd->view_angles = original_view_angles;
+    user_cmd->view_angles = pre_aimbot_view_angles;
   }
 
   result.use_psilent = (aimbot_result.psilent_command && !crit_result.attack_suppressed) ||
@@ -243,9 +245,6 @@ bool client_mode_create_move_hook(void* me, float sample_time, user_cmd* user_cm
   update_player_head_emoji_cache();
 
   const move_features_result move_result = run_move_features(user_cmd);
-  if (!move_result.use_psilent) {
-    navbot::controller().apply_post_anti_aim(user_cmd);
-  }
   if (move_result.use_psilent || navbot::controller().has_silent_path_look()) {
     return false;
   }
