@@ -1034,8 +1034,10 @@ static void draw_aimbot_content() {
     cat_menu::checkbox("Heavy auto unrev", &config.aimbot.auto_unrev);
     cat_menu::slider_float("Heavy rev threshold", &config.aimbot.auto_rev_threshold, 200.0f, 1200.0f, "%.0f HU");
   });
-  cat_menu::flow_panel("Sniper", 1, 76.0f, [&]() {
+  cat_menu::flow_panel("Sniper", 1, 116.0f, [&]() {
     cat_menu::checkbox("Automatic scope", &config.aimbot.sniper_auto_scope);
+    cat_menu::checkbox("Automatic unscope", &config.aimbot.sniper_auto_unscope);
+    cat_menu::slider_float("Scope distance", &config.aimbot.sniper_scope_distance, 250.0f, 4000.0f, "%.0f HU");
     cat_menu::slider_float("Scope cancel delay", &config.aimbot.sniper_scope_cancel_time, 1.0f, 5.0f, "%.1f s");
   });
   cat_menu::flow_panel("Melee", 1, 140.0f, [&]() {

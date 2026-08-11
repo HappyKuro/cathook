@@ -96,7 +96,6 @@ Material* material_manager::create_material(const std::string& name, const std::
   if (material == nullptr) key_values->delete_this();
   if (material != nullptr && material->is_error_material()) {
     material->decrement_reference_count();
-    material->delete_if_unreferenced();
     material = nullptr;
   }
   return material;
@@ -106,7 +105,6 @@ void material_manager::release_material(material_definition& definition) {
   if (definition.material == nullptr) return;
 
   definition.material->decrement_reference_count();
-  definition.material->delete_if_unreferenced();
   definition.material = nullptr;
   definition.phong_tint = nullptr;
   definition.envmap_tint = nullptr;

@@ -270,6 +270,8 @@ void config_store::import_config(const Config& config)
     set_bool("aimbot.melee_swing_predict_lag", config.aimbot.melee_swing_predict_lag);
     set_int("aimbot.melee_swing_validate_mode", config.aimbot.melee_swing_validate_mode);
     set_bool("aimbot.sniper_auto_scope", config.aimbot.sniper_auto_scope);
+    set_bool("aimbot.sniper_auto_unscope", config.aimbot.sniper_auto_unscope);
+    set_float("aimbot.sniper_scope_distance", config.aimbot.sniper_scope_distance);
     set_float("aimbot.sniper_scope_cancel_time", config.aimbot.sniper_scope_cancel_time);
     set_bool("aimbot.auto_rev", config.aimbot.auto_rev);
     set_bool("aimbot.auto_unrev", config.aimbot.auto_unrev);
@@ -745,7 +747,14 @@ void config_store::export_config(Config& config) const
     const bool legacy_auto_unscope = get_bool("aimbot.auto_unscope", false);
     config.aimbot.sniper_auto_scope = get_bool(
         "aimbot.sniper_auto_scope",
-        legacy_scoped_only || legacy_auto_scope || legacy_auto_unscope || config.aimbot.sniper_auto_scope);
+        legacy_scoped_only || legacy_auto_scope || config.aimbot.sniper_auto_scope);
+    config.aimbot.sniper_auto_unscope = get_bool(
+        "aimbot.sniper_auto_unscope",
+        legacy_auto_unscope || config.aimbot.sniper_auto_unscope);
+    config.aimbot.sniper_scope_distance = std::clamp(
+        get_float("aimbot.sniper_scope_distance", config.aimbot.sniper_scope_distance),
+        250.0f,
+        4000.0f);
     config.aimbot.sniper_scope_cancel_time = std::clamp(
         get_float("aimbot.sniper_scope_cancel_time", config.aimbot.sniper_scope_cancel_time),
         1.0f,

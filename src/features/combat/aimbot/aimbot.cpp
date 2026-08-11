@@ -504,8 +504,7 @@ void compute_readiness(aimbot_run_context& ctx) {
   ctx.readiness.primary = weapon_allows_primary_fire(ctx.local, ctx.weapon) &&
     (ctx.cmd->buttons & IN_ATTACK2) == 0;
   ctx.readiness.attack = ctx.target.entity != nullptr &&
-    (aim_auto_shoot::weapon_can_attack_or_release(ctx.local, ctx.weapon) ||
-      melee_swing_active(ctx.local, ctx.weapon));
+    aim_auto_shoot::weapon_has_primary_ammo(ctx.weapon);
 
   ctx.debug.attack_gate_ready = ctx.readiness.attack;
   ctx.debug.charge_ready = ctx.readiness.charge;

@@ -159,6 +159,12 @@ inline uint32_t hitscan_aim_effective_hitbox_mask(Weapon* weapon) {
     return configured_mask | aim_hitbox_mask_body | aim_hitbox_mask_pelvis;
   }
 
+  if (weapon != nullptr && weapon->is_headshot_weapon() &&
+      aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot) &&
+      aimbot_modifier_enabled(Aim::hitscan_mod_body_aim_if_lethal)) {
+    return configured_mask | aim_hitbox_mask_body | aim_hitbox_mask_pelvis;
+  }
+
   return ((weapon != nullptr && weapon->is_headshot_weapon() &&
       aimbot_modifier_enabled(Aim::hitscan_mod_headshot_only)) ||
       hitscan_aim_waits_for_headshot(weapon))

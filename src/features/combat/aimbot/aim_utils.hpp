@@ -880,6 +880,8 @@ inline bool aimbot_sniper_scope_time_ready(Player* localplayer) {
   return aimbot_tracked_scoped_time(localplayer) >= sniper_headshot_scope_delay;
 }
 
+inline bool aimbot_body_aim_lethal(Player* localplayer, Weapon* weapon, Player* target);
+
 inline float aimbot_distance_squared(const Vec3& left, const Vec3& right) {
   const Vec3 delta = left - right;
   return (delta.x * delta.x) + (delta.y * delta.y) + (delta.z * delta.z);
@@ -2495,18 +2497,7 @@ inline bool aimbot_sniper_headshot_ready(Player* localplayer, Weapon* weapon) {
     return false;
   }
 
-  if (weapon->is_sniper_rifle() &&
-      weapon->get_weapon_id() != TF_WEAPON_SNIPERRIFLE_CLASSIC &&
-      !aimbot_sniper_scope_confirmed(localplayer)) {
-    return false;
-  }
-
-  const float charge = weapon->get_charged_damage();
-  if (!std::isfinite(charge) || charge <= 0.0f) {
-    return false;
-  }
-
-  return weapon->can_fire_critical_shot(true);
+  return !weapon->is_sniper_rifle() || aimbot_sniper_scope_time_ready(localplayer);
 }
 
 inline bool aimbot_wait_for_headshot_ready(Player* localplayer, Weapon* weapon, const aimbot_candidate& candidate) {
@@ -2517,7 +2508,8 @@ inline bool aimbot_wait_for_headshot_ready(Player* localplayer, Weapon* weapon, 
   }
 
   if (candidate.hitbox >= 0 && candidate.hitbox != aim_hitbox_head) {
-    return false;
+    return candidate.player != nullptr &&
+      aimbot_body_aim_lethal(localplayer, weapon, candidate.player);
   }
 
   switch (weapon->get_weapon_id()) {

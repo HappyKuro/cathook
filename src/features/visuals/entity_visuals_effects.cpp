@@ -62,13 +62,18 @@ constexpr float glow_scale_max = 10.0f;
 class render_context_scope final {
 public:
   explicit render_context_scope(MaterialSystem* material_system)
-    : context_(material_system != nullptr ? material_system->get_render_context() : nullptr) {}
+    : context_(material_system != nullptr ? material_system->get_render_context() : nullptr) {
+    if (context_ != nullptr) context_->begin_render();
+  }
 
   render_context_scope(const render_context_scope&) = delete;
   render_context_scope& operator=(const render_context_scope&) = delete;
 
   ~render_context_scope() {
-    if (context_ != nullptr) context_->release();
+    if (context_ != nullptr) {
+      context_->end_render();
+      context_->release();
+    }
   }
 
   [[nodiscard]] RenderContext* get() const { return context_; }
@@ -140,12 +145,10 @@ void release_resources()
   auto release_material = [](Material* material) {
     if (material == nullptr) return;
     material->decrement_reference_count();
-    material->delete_if_unreferenced();
   };
   auto release_texture = [](Texture* texture) {
     if (texture == nullptr) return;
     texture->decrement_reference_count();
-    texture->delete_if_unreferenced();
   };
   release_material(mat_glow_color);
   release_material(mat_halo);
