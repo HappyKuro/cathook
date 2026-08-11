@@ -945,7 +945,7 @@ void config_store::export_config(Config& config) const
         load_layers("occluded", group.chams.occluded);
         group.glow.color = get_color(prefix + "glow.color", group.glow.color);
         group.glow.stencil = normalize_stencil_scale(get_float(prefix + "glow.stencil", group.glow.stencil));
-        group.glow.blur = std::clamp(get_float(prefix + "glow.blur", group.glow.blur), 0.0f, 10.0f);
+        group.glow.blur = std::clamp(get_float(prefix + "glow.blur", group.glow.blur), 0.0f, 100.0f);
         group.glow.start = std::clamp(get_float(prefix + "glow.start", group.glow.start), 0.0f, 2048.0f);
         group.glow.end = std::clamp(get_float(prefix + "glow.end", group.glow.end), 0.0f, 8192.0f);
         if (group.glow.end < group.glow.start) group.glow.end = group.glow.start;
@@ -978,7 +978,7 @@ void config_store::export_config(Config& config) const
         group.backtrack_visuals.glow.stencil = normalize_stencil_scale(
             get_float(prefix + "backtrack_visuals.glow.stencil", group.backtrack_visuals.glow.stencil));
         group.backtrack_visuals.glow.blur = std::clamp(
-            get_float(prefix + "backtrack_visuals.glow.blur", group.backtrack_visuals.glow.blur), 0.0f, 10.0f);
+            get_float(prefix + "backtrack_visuals.glow.blur", group.backtrack_visuals.glow.blur), 0.0f, 100.0f);
         group.backtrack_visuals.glow.start = std::clamp(
             get_float(prefix + "backtrack_visuals.glow.start", group.backtrack_visuals.glow.start), 0.0f, 2048.0f);
         group.backtrack_visuals.glow.end = std::clamp(

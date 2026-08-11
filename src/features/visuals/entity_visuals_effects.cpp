@@ -46,11 +46,17 @@ bool resources_ready = false;
 bool bloom_amount_initialized = false;
 
 constexpr float glow_scale_max = 10.0f;
+constexpr float glow_blur_max = 100.0f;
 
 [[nodiscard]] float normalized_glow_scale(const float scale)
 {
   const float normalized = std::clamp(scale / glow_scale_max, 0.0f, 1.0f);
   return normalized * normalized;
+}
+
+[[nodiscard]] float blur_amount(const float scale)
+{
+  return std::clamp(scale, 0.0f, glow_blur_max);
 }
 
 [[nodiscard]] int stencil_radius(const float scale)
@@ -349,6 +355,8 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
   const RGBA_float white{.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f};
 
   context->set_stencil_enable(false);
+  context->set_stencil_write_mask(0xFF);
+  context->set_stencil_test_mask(0xFF);
   context->clear_buffers(false, false, true);
   model_render->forced_material_override(mat_glow_color);
   context->set_stencil_enable(true);
@@ -387,7 +395,7 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
       if (!found) bloom_amount = nullptr;
       bloom_amount_initialized = true;
     }
-    if (bloom_amount != nullptr) bloom_amount->set_float_value(normalized_glow_scale(batch.settings.blur));
+    if (bloom_amount != nullptr) bloom_amount->set_float_value(blur_amount(batch.settings.blur));
     context->push_render_target_and_viewport();
     context->viewport(0, 0, width, height);
     context->set_render_target(render_buffer_1);

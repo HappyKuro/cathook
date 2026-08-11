@@ -1699,7 +1699,7 @@ static void draw_visual_groups_content_tfwin() {
     cat_menu::color_picker("Color", &group.glow.color);
     cat_menu::slider_float("Stencil scale", &group.glow.stencil, 0.0f, 10.0f, "%.1f");
     group.glow.stencil = std::clamp(std::round(group.glow.stencil * 10.0f) / 10.0f, 0.0f, 10.0f);
-    cat_menu::slider_float("Blur scale", &group.glow.blur, 0.0f, 10.0f, "%.1f");
+    cat_menu::slider_float("Blur scale", &group.glow.blur, 0.0f, 100.0f, "%.1f");
     cat_menu::slider_float("Render start", &group.glow.start, 0.0f, 2048.0f, "%.0f HU");
     cat_menu::slider_float("Render end", &group.glow.end, 512.0f, 8192.0f, "%.0f HU");
     if (group.glow.end < group.glow.start) group.glow.end = group.glow.start;
@@ -1727,7 +1727,7 @@ static void draw_visual_groups_content_tfwin() {
     cat_menu::color_picker("Backtrack color", &backtrack.glow.color);
     cat_menu::slider_float("Backtrack stencil scale", &backtrack.glow.stencil, 0.0f, 10.0f, "%.1f");
     backtrack.glow.stencil = std::clamp(std::round(backtrack.glow.stencil * 10.0f) / 10.0f, 0.0f, 10.0f);
-    cat_menu::slider_float("Backtrack blur scale", &backtrack.glow.blur, 0.0f, 10.0f, "%.1f");
+    cat_menu::slider_float("Backtrack blur scale", &backtrack.glow.blur, 0.0f, 100.0f, "%.1f");
     cat_menu::slider_float("Backtrack render start", &backtrack.glow.start, 0.0f, 2048.0f, "%.0f HU");
     cat_menu::slider_float("Backtrack render end", &backtrack.glow.end, 512.0f, 8192.0f, "%.0f HU");
     if (backtrack.glow.end < backtrack.glow.start) backtrack.glow.end = backtrack.glow.start;
