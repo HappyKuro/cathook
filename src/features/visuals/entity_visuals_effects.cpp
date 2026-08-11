@@ -94,6 +94,12 @@ void call_original(void* instance, const DrawModelState& state, const ModelRende
   if (draw_model_execute_original != nullptr) draw_model_execute_original(instance, state, info, bones);
 }
 
+[[nodiscard]] bool is_entity_model(Entity* entity, const ModelRenderInfo& info)
+{
+  if (entity == nullptr || info.renderable == nullptr || info.model == nullptr) return false;
+  return info.renderable == entity->get_renderable();
+}
+
 void set_stencil(RenderContext* context, const int reference, const int write_mask, const int test_mask,
   const StencilComparisonMode compare, const StencilOperation pass, const StencilOperation fail, const StencilOperation zfail)
 {
@@ -478,6 +484,10 @@ void on_draw_model_execute(void* instance, const DrawModelState& state, const Mo
     return;
   }
   Entity* entity = info.entity_index > 0 ? entity_list->entity_from_index(static_cast<unsigned int>(info.entity_index)) : nullptr;
+  if (!is_entity_model(entity, info)) {
+    call_original(instance, state, info, bones);
+    return;
+  }
   const auto match = visual_groups::group_for_entity(entity, true);
   if (!match) {
     call_original(instance, state, info, bones);
