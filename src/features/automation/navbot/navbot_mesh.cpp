@@ -572,9 +572,9 @@ bool directed_cross_area_segment_reachable(const nav_area_data& from_area, const
   return directed_height_delta_reachable(from, to);
 }
 
-bool is_dropdown_transition(const Vec3& from, const Vec3& to)
+bool is_dropdown_transition(const Vec3& from, const Vec3& next_center)
 {
-  return from.z - to.z > player_jump_height;
+  return from.z - next_center.z > player_jump_height;
 }
 
 struct dropdown_waypoint
@@ -584,10 +584,10 @@ struct dropdown_waypoint
   Vec3 landing{};
 };
 
-dropdown_waypoint make_dropdown_waypoint(const Vec3& current, const Vec3& next, const nav_area_data& next_area)
+dropdown_waypoint make_dropdown_waypoint(const Vec3& current, const Vec3& next_center, const nav_area_data& next_area)
 {
-  auto to_target = next - current;
-  if (current.z - next.z <= player_jump_height)
+  auto to_target = next_center - current;
+  if (current.z - next_center.z <= player_jump_height)
   {
     return {};
   }
@@ -1282,8 +1282,8 @@ void navbot_mesh::build_crumb_graph()
         continue;
       }
 
-      const auto dropdown = is_dropdown_transition(from, to);
-      const auto waypoint = dropdown ? make_dropdown_waypoint(from, to, *next) : dropdown_waypoint{};
+      const auto dropdown = is_dropdown_transition(from, next->center);
+      const auto waypoint = dropdown ? make_dropdown_waypoint(from, next->center, *next) : dropdown_waypoint{};
       add_directed_edge(
         from_node,
         to_node,
