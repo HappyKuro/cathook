@@ -176,16 +176,6 @@ Material* find_engine_material(const char* name)
   return material;
 }
 
-bool bind_base_texture(Material* material, Texture* texture)
-{
-  if (material == nullptr || texture == nullptr) return false;
-  bool found = false;
-  MaterialVar* base_texture = material->find_var("$basetexture", &found, false);
-  if (!found || base_texture == nullptr) return false;
-  base_texture->set_texture_value(texture);
-  return true;
-}
-
 void retire_resources()
 {
   if (mat_glow_color != nullptr) retired_materials.emplace_back(mat_glow_color);
@@ -226,11 +216,16 @@ bool ensure_resources()
   if (render_buffer_0 != nullptr) render_buffer_0->increment_reference_count();
   if (render_buffer_1 != nullptr) render_buffer_1->increment_reference_count();
 
-  mat_halo = find_engine_material("dev/halo_add_to_screen");
-  mat_blur_x = find_engine_material("dev/blurfilterx");
-  mat_blur_y = find_engine_material("dev/blurfiltery");
-  const bool textures_bound = bind_base_texture(mat_halo, render_buffer_0) &&
-    bind_base_texture(mat_blur_x, render_buffer_0) && bind_base_texture(mat_blur_y, render_buffer_1);
+  mat_halo = materials.create_runtime_material(
+    "monolilth_glow_halo",
+    "\"UnlitGeneric\"\n{\n\t$basetexture \"monolilth_glow_buffer_0\"\n\t$additive \"1\"\n}");
+  mat_blur_x = materials.create_runtime_material(
+    "monolilth_glow_blur_x",
+    "\"BlurFilterX\"\n{\n\t$basetexture \"monolilth_glow_buffer_0\"\n}");
+  mat_blur_y = materials.create_runtime_material(
+    "monolilth_glow_blur_y",
+    "\"BlurFilterY\"\n{\n\t$basetexture \"monolilth_glow_buffer_1\"\n}");
+  const bool textures_bound = mat_halo != nullptr && mat_blur_x != nullptr && mat_blur_y != nullptr;
   resources_ready = mat_glow_color != nullptr && mat_halo != nullptr && mat_blur_x != nullptr &&
     mat_blur_y != nullptr && render_buffer_0 != nullptr && render_buffer_1 != nullptr && textures_bound;
   if (resources_ready) {
@@ -325,18 +320,28 @@ bool glow_entity_valid(const glow_entity& item)
   if (item.entity == nullptr || entity_list == nullptr || item.info.entity_index <= 0) return false;
   Entity* current = entity_list->entity_from_index(static_cast<unsigned int>(item.info.entity_index));
   if (current != item.entity || current->is_dormant() || !current->should_draw()) return false;
+  if (item.info.renderable != current->get_renderable() || item.info.model != current->get_model()) return false;
   if (current->get_class_id() == class_id::PLAYER && !reinterpret_cast<Player*>(current)->is_alive()) return false;
   return true;
 }
 
-void draw_glow_entities(const glow_batch& batch, const int width, const int height, RenderContext* context)
+void draw_glow_entities(const glow_batch& batch, const int width, const int height, RenderContext* context,
+  Material* original_material, const OverrideType original_override)
 {
   std::vector<const glow_entity*> valid_entities{};
   valid_entities.reserve(batch.entities.size());
   for (const glow_entity& item : batch.entities) {
     if (glow_entity_valid(item)) valid_entities.emplace_back(&item);
   }
-  if (valid_entities.empty()) return;
+  if (valid_entities.empty()) {
+    context->push_render_target_and_viewport();
+    context->set_render_target(render_buffer_0);
+    context->viewport(0, 0, width, height);
+    context->clear_color4ub(0, 0, 0, 0);
+    context->clear_buffers(true, true, false);
+    context->pop_render_target_and_viewport();
+    return;
+  }
 
   RGBA_float original_color{};
   render_view->get_color_modulation(&original_color);
@@ -367,6 +372,7 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
   context->clear_color4ub(0, 0, 0, 0);
   context->set_stencil_enable(false);
   context->clear_buffers(true, true, false);
+  model_render->forced_material_override(mat_glow_color);
   for (const glow_entity* item : valid_entities) {
     materials.set_color(nullptr, item->color);
     rendering_effect_scope rendering_scope{};
@@ -394,8 +400,10 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
     context->pop_render_target_and_viewport();
   }
 
-  render_view->set_color_modulation(&original_color);
-  render_view->set_blend(original_blend);
+  // The render target already contains the entity colors. Composite it without
+  // inheriting the last entity's modulation or the caller's blend state.
+  render_view->set_color_modulation(&white);
+  render_view->set_blend(1.0f);
   context->set_stencil_enable(true);
   context->set_stencil_reference_count(0);
   context->set_stencil_write_mask(0x0);
@@ -423,6 +431,9 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
   }
   if (batch.settings.blur > 0.0f) draw_halo(0, 0);
   context->set_stencil_enable(false);
+  model_render->forced_material_override(original_material, original_override);
+  render_view->set_color_modulation(&original_color);
+  render_view->set_blend(original_blend);
 }
 
 void draw_backtrack_effects(void* instance, const DrawModelState& state, const ModelRenderInfo& info,
@@ -489,7 +500,9 @@ void on_post_screen_space_effects()
   Material* original_material = nullptr;
   OverrideType original_override = OVERRIDE_NORMAL;
   model_render->get_material_override(&original_material, &original_override);
-  for (const glow_batch& batch : glow_batches) draw_glow_entities(batch, screen.x, screen.y, context);
+  for (const glow_batch& batch : glow_batches) {
+    draw_glow_entities(batch, screen.x, screen.y, context, original_material, original_override);
+  }
   model_render->forced_material_override(original_material, original_override);
   render_view->set_color_modulation(&original_color);
   render_view->set_blend(original_blend);

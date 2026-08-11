@@ -93,7 +93,7 @@ Material* material_manager::create_material(const std::string& name, const std::
     return nullptr;
   }
   Material* material = material_system->create_material(name.c_str(), key_values);
-  if (material == nullptr) key_values->delete_this();
+  // CreateMaterial consumes the KeyValues object, including on failure.
   if (material != nullptr && material->is_error_material()) {
     material->decrement_reference_count();
     material = nullptr;

@@ -875,7 +875,7 @@ inline bool aimbot_sniper_scope_time_ready(Player* localplayer) {
     return false;
   }
 
-  constexpr float sniper_headshot_scope_delay = 0.2f;
+  constexpr float sniper_headshot_scope_delay = 0.45f;
 
   return aimbot_tracked_scoped_time(localplayer) >= sniper_headshot_scope_delay;
 }

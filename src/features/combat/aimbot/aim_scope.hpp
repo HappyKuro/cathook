@@ -201,6 +201,13 @@ inline bool fire_ready(Player* localplayer, Weapon* weapon) {
     return false;
   }
 
+  if (scoped_only(localplayer, weapon) &&
+      aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot) &&
+      weapon->is_headshot_weapon() &&
+      !aimbot_sniper_scope_time_ready(localplayer)) {
+    return false;
+  }
+
   if (pending_scope_state == 1 && !aimbot_sniper_scope_confirmed(localplayer)) {
     return false;
   }

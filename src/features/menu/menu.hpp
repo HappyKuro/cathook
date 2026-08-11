@@ -630,7 +630,7 @@ inline void flow_panel(const char* name, int column_index, float height, draw_fn
   ImGui::SetCursorPos(position);
   const bool panel_visible = begin_panel(name, ImVec2(state.column_width, panel_height));
   cat_bind::push_panel_label(name != nullptr ? name : "");
-  if (panel_visible) {
+  if (panel_visible || cat_bind::registering_targets()) {
     draw_fn();
   }
   cat_bind::pop_panel_label();
