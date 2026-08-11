@@ -192,6 +192,12 @@ constexpr const char* client_achievement_mgr_post_init =
   "55 48 89 E5 41 57 41 56 41 55 49 89 FD 41 54 48 8D 3D ? ? ? ? 53 48 83 EC 28 E8 ? ? ? ? 84 C0";
 constexpr const char* client_objective_flag_countdown_update =
   "49 8B BC 24 ? ? ? ? 48 8B 07 FF 90 ? ? ? ? 84 C0 0F 85 ? ? ? ? 49 8B 06 48 85 C0 74 ?";
+constexpr const char* client_panel_image_paint =
+  "55 48 89 E5 41 56 41 55 41 54 49 89 FC 53 48 83 EC ? 80 BF 1B 02 00 00 00 0F 85 ? ? ? ? 4D 8B AC 24 E8 01 00 00 4D 85 ED 0F 84 ? ? ? ? 49 8B 45 00 48 8D 1D ? ? ? ? 4C 8B 70 28";
+constexpr const char* server_scene_entity_should_transmit =
+  "55 48 89 E5 41 57 41 56 49 89 F6 41 55 41 54 49 89 FC 53 48 83 EC 08 E8 ? ? ? ? 49 8B BC 24 98 08 00 00 41 89 C7 48 85 FF 74 ? 31 DB 83 F8 10";
+constexpr const char* server_base_entity_should_transmit =
+  "55 48 89 E5 41 55 41 54 49 89 FC 53 48 89 F3 48 83 EC 08 E8 ? ? ? ? A8 20 75 ? A8 08 0F 85 ? ? ? ? A8 10 41 B8 10 00 00 00";
 constexpr const char* load_named_skys =
   "48 8D 05 ? ? ? ? 55 48 8D 15 ? ? ? ? 66 48 0F 6E C8 48 89 E5 41 57 48 8D 05 ? ? ? ? 41 56 66 48 0F 6E C2 41 55";
 

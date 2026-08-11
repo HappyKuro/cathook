@@ -135,7 +135,9 @@ enum move_type {
 class Entity {
 public:
   int get_owner_entity_handle(void) {
-    return *(int*)(this + 0x754);
+    static const int netvar_offset = tf2_netvars::find_offset("DT_BaseEntity", {"m_hOwnerEntity"});
+    const auto offset = netvar_offset > 0 ? netvar_offset : 0x754;
+    return *reinterpret_cast<int*>(reinterpret_cast<uintptr_t>(this) + static_cast<uintptr_t>(offset));
   }
 
   Entity* get_owner_entity(void) {

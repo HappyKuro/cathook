@@ -48,8 +48,7 @@ inline bool policy_requires_scope(Player* localplayer, Weapon* weapon) {
     return false;
   }
 
-  return scoped_only(localplayer, weapon) ||
-    aimbot_weapon_requires_scope(weapon) ||
+  return aimbot_weapon_requires_scope(weapon) ||
     (weapon->is_headshot_weapon() &&
       aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot)) ||
     aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_charge);
@@ -123,6 +122,11 @@ inline decision resolve(Player* localplayer, Weapon* weapon, const aimbot_candid
     return {};
   }
 
+  if (scoped_only(localplayer, weapon) && !config.aimbot.sniper_auto_scope) {
+    reset_auto_scope();
+    return {};
+  }
+
   const bool selected_target_needs_scope = candidate.entity != nullptr &&
     target_within_auto_scope_range(localplayer, candidate.entity) &&
     policy_requires_scope(localplayer, weapon);
@@ -163,6 +167,10 @@ inline decision resolve(Player* localplayer, Weapon* weapon, const aimbot_candid
 
 inline bool fire_ready(Player* localplayer, Weapon* weapon) {
   if (localplayer == nullptr || weapon == nullptr) {
+    return false;
+  }
+
+  if (scoped_only(localplayer, weapon) && !aimbot_sniper_scope_confirmed(localplayer)) {
     return false;
   }
 

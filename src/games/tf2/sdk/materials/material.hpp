@@ -76,6 +76,13 @@ public:
     return get_material_flag_fn(this, flag);
   }
 
+  bool is_error_material() const {
+    void** vtable = *(void***)const_cast<Material*>(this);
+
+    auto is_error_material_fn = (bool (*)(const void*))vtable[42];
+    return is_error_material_fn(this);
+  }
+
   void delete_if_unreferenced(void) {
     void** vtable = *(void***)this;
 

@@ -1,74 +1,138 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -u
 
 echo "Stopping... (this may take a while)"
 
-default_headless_display="${CAT_DEFAULT_DISPLAY:-:699}"
+script_dir="$(CDPATH= cd -- "$(dirname -- "$BASH_SOURCE")" && pwd)"
+panel_dir="$script_dir/catbot-ipc-web-panel-main"
+instances_dir="$script_dir/user_instances"
+if [ -n "${CATHOOK_ROOT-}" ]; then install_root="$CATHOOK_ROOT"; else install_root="/opt/cathook"; fi
+ipc_bin="$install_root/ipc/bin"
+if [ -n "${CAT_DEFAULT_DISPLAY-}" ]; then default_headless_display="$CAT_DEFAULT_DISPLAY"; else default_headless_display=":699"; fi
+if [ -n "${CAT_XVFB_PID_FILE-}" ]; then xvfb_pid_file="$CAT_XVFB_PID_FILE"; else xvfb_pid_file="/tmp/cat-catbot-xvfb.pid"; fi
+if [ -n "${CAT_CHUNKED_X_DISPLAY_PID_DIR-}" ]; then xvfb_pool_pid_dir="$CAT_CHUNKED_X_DISPLAY_PID_DIR"; else xvfb_pool_pid_dir="/tmp/cat-catbot-xvfb-pool"; fi
+if [ -n "${CAT_IPC_PORT-}" ]; then port="$CAT_IPC_PORT"; else port="7655"; fi
 
-stop_pidfile() {
-    local pid_file="$1"
-    local signal="${2:-TERM}"
-    local wait_seconds="${3:-10}"
-
-    [ -f "$pid_file" ] || return 0
-
-    local pid
-    pid="$(tr -cd '0-9' <"$pid_file" 2>/dev/null)"
-    if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then
-        rm -f "$pid_file"
-        return 0
+if [ "$(id -u)" -eq 0 ]; then
+    sudo_args=()
+else
+    if ! sudo -n -v 2>/dev/null; then
+        sudo -v || { echo "sudo authentication is required to stop root-owned bot processes." >&2; exit 1; }
     fi
+    sudo_args=(sudo -n)
+fi
 
-    sudo kill "-$signal" "$pid" 2>/dev/null || true
-
-    local waited=0
-    local limit=$(( wait_seconds * 10 ))
-    while [ "$waited" -lt "$limit" ] && kill -0 "$pid" 2>/dev/null; do
-        sleep 0.1
-        waited=$(( waited + 1 ))
-    done
-
-    if kill -0 "$pid" 2>/dev/null; then
-        echo "  $pid did not exit on SIG$signal after ${wait_seconds}s, killing" >&2
-        sudo kill -KILL "$pid" 2>/dev/null || true
-    fi
-
-    rm -f "$pid_file"
+as_root() {
+    if [ "$(id -u)" -eq 0 ]; then "$@"; else "${sudo_args[@]}" "$@"; fi
 }
 
-stop_pidfile /tmp/cat-ipc-server.pid TERM 10
-stop_pidfile /tmp/ncat-cathook-webpanel.pid INT 10
+if command -v curl >/dev/null 2>&1; then
+    curl --connect-timeout 1 --max-time 5 -fsS -X POST \
+        -H 'Content-Type: application/x-www-form-urlencoded' --data 'value=0' \
+        "http://127.0.0.1:$port/api/quota" >/dev/null 2>&1 || true
+    curl --connect-timeout 1 --max-time 2 -fsS \
+        "http://127.0.0.1:$port/api/quota/0" >/dev/null 2>&1 || true
+fi
 
-if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && command -v xpra >/dev/null 2>&1; then
-    display="${CAT_XPRA_DISPLAY:-${CAT_DISPLAY:-${CAT_XVFB_DISPLAY:-$default_headless_display}}}"
+if [ "${CAT_VISIBLE_WINDOWS-0}" != "1" ] && command -v xpra >/dev/null 2>&1; then
+    if [ -n "${CAT_XPRA_DISPLAY-}" ]; then display="$CAT_XPRA_DISPLAY"
+    elif [ -n "${CAT_DISPLAY-}" ]; then display="$CAT_DISPLAY"
+    elif [ -n "${CAT_XVFB_DISPLAY-}" ]; then display="$CAT_XVFB_DISPLAY"
+    else display="$default_headless_display"; fi
     xpra stop "$display" >/tmp/cat-catbot-xpra-stop.log 2>&1 || true
 fi
 
-xvfb_pid_file="${CAT_XVFB_PID_FILE:-/tmp/cat-catbot-xvfb.pid}"
-if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && [ -f "$xvfb_pid_file" ]; then
-    xvfb_pid="$(tr -d '[:space:]' <"$xvfb_pid_file" 2>/dev/null || true)"
-    [ -n "$xvfb_pid" ] && kill "$xvfb_pid" 2>/dev/null || true
-    rm -f "$xvfb_pid_file"
+if [ -f /tmp/pulsemodule.id ] && command -v pactl >/dev/null 2>&1; then
+    pactl unload-module "$(cat /tmp/pulsemodule.id 2>/dev/null)" 2>/dev/null || true
 fi
 
-xvfb_pool_pid_dir="${CAT_CHUNKED_X_DISPLAY_PID_DIR:-/tmp/cat-catbot-xvfb-pool}"
-if [ "${CAT_VISIBLE_WINDOWS:-0}" != "1" ] && [ -d "$xvfb_pool_pid_dir" ]; then
-    for xvfb_pool_pid_file in "$xvfb_pool_pid_dir"/*.pid; do
-        [ -e "$xvfb_pool_pid_file" ] || continue
-        xvfb_pool_pid="$(tr -d '[:space:]' <"$xvfb_pool_pid_file" 2>/dev/null || true)"
-        [ -n "$xvfb_pool_pid" ] && kill "$xvfb_pool_pid" 2>/dev/null || true
-        rm -f "$xvfb_pool_pid_file"
+as_root env PANEL_DIR="$panel_dir" INSTANCES_DIR="$instances_dir" IPC_BIN="$ipc_bin" \
+    XVFB_PID_FILE="$xvfb_pid_file" XVFB_POOL_PID_DIR="$xvfb_pool_pid_dir" bash -s <<'ROOT_STOP_SCRIPT'
+set -u
+kill_pids=()
+bot_roots=()
+
+add_pid() {
+    candidate="$1"
+    existing=""
+    [ -n "$candidate" ] || return
+    case "$candidate" in ''|*[!0-9]*) return ;; esac
+    [ "$candidate" -gt 1 ] 2>/dev/null || return
+    for existing in "${kill_pids[@]}"; do [ "$existing" = "$candidate" ] && return; done
+    kill_pids+=("$candidate")
+}
+
+proc_cmd() { tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null || true; }
+proc_cwd() { readlink -f "/proc/$1/cwd" 2>/dev/null || true; }
+children_of() { ps -eo pid=,ppid= 2>/dev/null | awk -v parent="$1" '$2 == parent { print $1 }'; }
+
+collect_tree() {
+    root="$1"
+    child=""
+    while read -r child; do [ -n "$child" ] && collect_tree "$child"; done < <(children_of "$root")
+    add_pid "$root"
+}
+
+for proc in /proc/[0-9]*; do
+    pid="${proc##*/}"
+    [ -r "$proc/cmdline" ] || continue
+    cmd="$(proc_cmd "$pid")"
+    cwd="$(proc_cwd "$pid")"
+    if [ "$cwd" = "$PANEL_DIR" ] &&
+       { [[ "$cmd" == bash\ ./run.sh* ]] || [[ "$cmd" == /bin/bash\ ./run.sh* ]] ||
+         [[ "$cmd" == *"/node app.js "* ]] || [[ "$cmd" == *"/node app.js" ]]; }; then
+        add_pid "$pid"
+    fi
+    [[ "$cmd" == "$IPC_BIN/server "* || "$cmd" == "$IPC_BIN/server" ]] && add_pid "$pid"
+    [[ "$cmd" == "$IPC_BIN/console "* || "$cmd" == "$IPC_BIN/console" ]] && add_pid "$pid"
+    [[ "$cmd" == *"--private=$INSTANCES_DIR/"* ]] && bot_roots+=("$pid")
+done
+
+for root in "${bot_roots[@]}"; do collect_tree "$root"; done
+
+if [ "${CAT_VISIBLE_WINDOWS-0}" != "1" ]; then
+    for pid_file in "$XVFB_PID_FILE" "$XVFB_POOL_PID_DIR"/*.pid; do
+        [ -f "$pid_file" ] || continue
+        pid="$(tr -cd '0-9' <"$pid_file" 2>/dev/null || true)"
+        cmd="$(proc_cmd "$pid")"
+        [[ "$cmd" == Xvfb\ :* ]] && add_pid "$pid"
     done
 fi
 
-[ -f /tmp/ncat-cathook-webpanel.pid ] && sudo rm /tmp/ncat-cathook-webpanel.pid
-[ -f /tmp/cat-ipc-server.pid ] && sudo rm /tmp/cat-ipc-server.pid
-[ -f /tmp/pulsemodule.id ] && pactl unload-module $(cat /tmp/pulsemodule.id) && rm /tmp/pulsemodule.id
+for pid in "${kill_pids[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done
+for _ in $(seq 1 50); do
+    alive=0
+    for pid in "${kill_pids[@]}"; do kill -0 "$pid" 2>/dev/null && alive=1; done
+    [ "$alive" -eq 0 ] && break
+    sleep 0.2
+done
+for pid in "${kill_pids[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done
 
-ipcserver=$( ps faux | grep '/opt/cathook/ipc/bin/server' | grep -vw grep | awk '{ print $2 }' );
-[ ! -z "$ipcserver" ] && sudo kill ${ipcserver};
-ipcconsole=$( ps faux | grep '/opt/cathook/ipc/bin/console' | grep -vw grep | awk '{ print $2 }' );
-[ ! -z "$ipcconsole" ] && sudo kill ${ipcconsole};
+rm -f /tmp/ncat-cathook-webpanel.pid /tmp/cat-ipc-server.pid /tmp/cat-ipc-server.log \
+    /tmp/cat-catbot-xvfb.pid /tmp/catbot-panel-start.lock /tmp/pulsemodule.id \
+    "$XVFB_POOL_PID_DIR"/*.pid /tmp/source_engine*.lock 2>/dev/null || true
 
-rm -f /tmp/catbot-panel-start.lock
+leftovers=0
+for proc in /proc/[0-9]*; do
+    pid="${proc##*/}"
+    [ -r "$proc/cmdline" ] || continue
+    cmd="$(proc_cmd "$pid")"
+    cwd="$(proc_cwd "$pid")"
+    if [ "$cwd" = "$PANEL_DIR" ] &&
+       { [[ "$cmd" == bash\ ./run.sh* ]] || [[ "$cmd" == /bin/bash\ ./run.sh* ]] ||
+         [[ "$cmd" == *"/node app.js "* ]] || [[ "$cmd" == *"/node app.js" ]]; }; then
+        echo "still running panel process: $pid $cmd" >&2
+        leftovers=1
+    fi
+    if [[ "$cmd" == *"--private=$INSTANCES_DIR/"* ]] ||
+       [[ "$cmd" == "$IPC_BIN/server "* || "$cmd" == "$IPC_BIN/server" ]] ||
+       [[ "$cmd" == "$IPC_BIN/console "* || "$cmd" == "$IPC_BIN/console" ]]; then
+        echo "still running bot/IPC process: $pid $cmd" >&2
+        leftovers=1
+    fi
+done
+exit "$leftovers"
+ROOT_STOP_SCRIPT
 
+rm -f /tmp/pulsemodule.id 2>/dev/null || true
 echo "Stopped!"

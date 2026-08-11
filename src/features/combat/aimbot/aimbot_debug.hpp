@@ -77,9 +77,14 @@ struct aimbot_reject_debug {
   int hitbox = -1;
   int trace_entity_index = -1;
   int trace_hitbox = -1;
+  int trace_contents = 0;
   float fov = FLT_MAX;
   float fov_limit = FLT_MAX;
   float distance = FLT_MAX;
+  float trace_fraction = 1.0f;
+  Vec3 trace_start{};
+  Vec3 trace_point{};
+  Vec3 trace_end{};
   bool visible = false;
   bool preferred = false;
   bool current = false;

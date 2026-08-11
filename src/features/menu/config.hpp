@@ -897,6 +897,7 @@ struct Misc {
     bool navbot_draw_path_boxes = true;
     RGBA_float navbot_path_color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f};
     bool navbot_dont_path_during_warmup = false;
+    bool navbot_hazards = false;
     bool navbot_look_at_path = false;
     bool navbot_look_at_path_silent = false;
     navbot_weapon_mode navbot_weapon_selection = navbot_weapon_mode::AUTO;

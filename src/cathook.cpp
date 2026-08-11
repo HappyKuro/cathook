@@ -154,6 +154,77 @@ shaderapidx9_apply_pending_transition_snapshot_fn shaderapidx9_apply_pending_tra
 using shaderapivk_apply_pending_transition_snapshot_fn = std::int64_t (*)(void*);
 shaderapivk_apply_pending_transition_snapshot_fn shaderapivk_apply_pending_transition_snapshot_original = nullptr;
 
+using client_panel_image_paint_fn = void (*)(void*);
+client_panel_image_paint_fn client_panel_image_paint_original = nullptr;
+
+using should_transmit_fn = int (*)(void*, void*);
+should_transmit_fn scene_entity_should_transmit_original = nullptr;
+should_transmit_fn base_entity_should_transmit = nullptr;
+
+void client_panel_image_paint_hook(void* panel)
+{
+  CATHOOK_HOOK_GUARD();
+  if (panel == nullptr || client_panel_image_paint_original == nullptr) {
+    return;
+  }
+
+  auto* bytes = static_cast<std::uint8_t*>(panel);
+  auto* image = *reinterpret_cast<void**>(bytes + 0x1e8);
+  if (image == nullptr || *reinterpret_cast<void**>(image) == nullptr) {
+    return;
+  }
+
+  client_panel_image_paint_original(panel);
+}
+
+namespace {
+
+bool has_live_choreo_scene_vtable(void* scene)
+{
+  if (scene == nullptr) {
+    return false;
+  }
+
+  memory_page_permissions object_page{};
+  if (!query_page_permissions(scene, object_page) || (object_page.protection & PROT_READ) == 0) {
+    return false;
+  }
+
+  auto* const vtable = *reinterpret_cast<void***>(scene);
+  if (vtable == nullptr) {
+    return false;
+  }
+
+  memory_page_permissions slot_page{};
+  return query_page_permissions(&vtable[4], slot_page) && (slot_page.protection & PROT_READ) != 0 &&
+    is_executable_memory_address(vtable[4]);
+}
+
+}
+
+int scene_entity_should_transmit_hook(void* scene_entity, void* check_transmit_info)
+{
+  CATHOOK_HOOK_GUARD();
+  if (scene_entity == nullptr || scene_entity_should_transmit_original == nullptr) {
+    return 0;
+  }
+
+  constexpr std::uintptr_t choreo_scene_offset = 0x898;
+  auto* const scene = *reinterpret_cast<void**>(
+    reinterpret_cast<std::uintptr_t>(scene_entity) + choreo_scene_offset);
+  if (scene != nullptr && !has_live_choreo_scene_vtable(scene)) {
+    static std::atomic_bool warned_invalid_scene = false;
+    if (!warned_invalid_scene.exchange(true)) {
+      print("[crash-guard] CSceneEntity has a stale CChoreoScene during CheckTransmit; using base transmission\n");
+    }
+    return base_entity_should_transmit != nullptr
+      ? base_entity_should_transmit(scene_entity, check_transmit_info)
+      : 0;
+  }
+
+  return scene_entity_should_transmit_original(scene_entity, check_transmit_info);
+}
+
 std::int64_t shaderapidx9_apply_pending_transition_snapshot_hook(void* shaderapi)
 {
   CATHOOK_HOOK_GUARD();
@@ -722,6 +793,7 @@ void clear_runtime_pointer_state()
   steam_friends = nullptr;
 
   model_render_draw_model_execute_original = nullptr;
+  model_render_forced_material_override_original = nullptr;
   entity_visuals::draw_model_execute_original = nullptr;
   client_mode_create_move_original = nullptr;
   client_mode_post_screen_space_effects_original = nullptr;
@@ -730,6 +802,9 @@ void clear_runtime_pointer_state()
   draw_view_model_original = nullptr;
   get_panel_name_original = nullptr;
   paint_traverse_original = nullptr;
+  client_panel_image_paint_original = nullptr;
+  scene_entity_should_transmit_original = nullptr;
+  base_entity_should_transmit = nullptr;
   fire_event_client_side_original = nullptr;
   frame_stage_notify_original = nullptr;
   dispatch_user_message_original = nullptr;
@@ -820,6 +895,11 @@ bool unload_module_runtime() {
   if (model_render_vtable != nullptr && model_render_draw_model_execute_original != nullptr &&
       !write_to_table(model_render_vtable, 19, (void*)model_render_draw_model_execute_original)) {
     print("ModelRender::DrawModelExecute failed to restore hook\n");
+  }
+
+  if (model_render_vtable != nullptr && model_render_forced_material_override_original != nullptr &&
+      !write_to_table(model_render_vtable, 1, (void*)model_render_forced_material_override_original)) {
+    print("ModelRender::ForcedMaterialOverride failed to restore hook\n");
   }
 
   if (client_mode_vtable != nullptr && override_view_original != nullptr && !write_to_table(client_mode_vtable, 17, (void*)override_view_original)) {
@@ -1378,6 +1458,8 @@ bool initialize_game_runtime() {
   client_mode_vtable = *(void***)client_mode_interface;
 
   model_render_vtable = *(void***)model_render;
+  model_render_forced_material_override_original = reinterpret_cast<void (*)(void*, Material*, OverrideType)>(
+    read_vtable_entry(model_render_vtable, 1, "ModelRender::ForcedMaterialOverride"));
   model_render_draw_model_execute_original = reinterpret_cast<void (*)(void*, const DrawModelState&, const ModelRenderInfo&, matrix_3x4*)>(
     read_vtable_entry(model_render_vtable, 19, "ModelRender::DrawModelExecute"));
   entity_visuals::draw_model_execute_original = model_render_draw_model_execute_original;
@@ -1386,6 +1468,12 @@ bool initialize_game_runtime() {
     print("ModelRender::DrawModelExecute hook failed\n");
   } else {
     print("ModelRender::DrawModelExecute hooked\n");
+  }
+  if (model_render_forced_material_override_original == nullptr || !write_to_table(
+        model_render_vtable, 1, (void*)model_render_forced_material_override_hook)) {
+    print("ModelRender::ForcedMaterialOverride hook failed\n");
+  } else {
+    print("ModelRender::ForcedMaterialOverride hooked\n");
   }
 
   client_mode_post_screen_space_effects_original = reinterpret_cast<bool (*)(void*, const view_setup*)>(
@@ -1491,6 +1579,22 @@ bool initialize_game_runtime() {
 
   team_menu_show_panel_original = (void (*)(void*, bool))sigscan_module("client.so", sigs::team_menu_show_panel);
 
+  client_panel_image_paint_original = reinterpret_cast<client_panel_image_paint_fn>(
+    sigscan_module("client.so", sigs::client_panel_image_paint));
+  if (client_panel_image_paint_original == nullptr) {
+    print("Failed to find client panel image paint crash guard; UI teardown guard disabled\n");
+  }
+
+  scene_entity_should_transmit_original = reinterpret_cast<should_transmit_fn>(
+    sigscan_module("server.so", sigs::server_scene_entity_should_transmit));
+  base_entity_should_transmit = reinterpret_cast<should_transmit_fn>(
+    sigscan_module("server.so", sigs::server_base_entity_should_transmit));
+  if (scene_entity_should_transmit_original == nullptr || base_entity_should_transmit == nullptr) {
+    print("Failed to find CSceneEntity CheckTransmit crash guard; stale scene guard disabled\n");
+    scene_entity_should_transmit_original = nullptr;
+    base_entity_should_transmit = nullptr;
+  }
+
   cl_move_original = (tickbase::cl_move_fn)sigscan_module("engine.so", sigs::cl_move);
   error_assert(cl_move_original == nullptr, "Failed to find CL_Move");
 
@@ -1593,6 +1697,29 @@ bool initialize_game_runtime() {
 
   rv = funchook_prepare(funchook, (void**)&team_menu_show_panel_original, (void*)team_menu_show_panel_hook);
   error_assert(rv != 0, "Failed to prepare CTFTeamMenu::ShowPanel hook\n");
+
+  if (client_panel_image_paint_original != nullptr) {
+    rv = funchook_prepare(
+      funchook,
+      reinterpret_cast<void**>(&client_panel_image_paint_original),
+      reinterpret_cast<void*>(client_panel_image_paint_hook));
+    if (rv != 0) {
+      print("Failed to prepare client panel image paint crash guard\n");
+      client_panel_image_paint_original = nullptr;
+    }
+  }
+
+  if (scene_entity_should_transmit_original != nullptr && base_entity_should_transmit != nullptr) {
+    rv = funchook_prepare(
+      funchook,
+      reinterpret_cast<void**>(&scene_entity_should_transmit_original),
+      reinterpret_cast<void*>(scene_entity_should_transmit_hook));
+    if (rv != 0) {
+      print("Failed to prepare CSceneEntity CheckTransmit crash guard\n");
+      scene_entity_should_transmit_original = nullptr;
+      base_entity_should_transmit = nullptr;
+    }
+  }
 
   rv = funchook_prepare(funchook, (void**)&cl_move_original, (void*)cl_move_hook);
   error_assert(rv != 0, "Failed to prepare CL_Move hook\n");

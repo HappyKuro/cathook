@@ -46,7 +46,7 @@ struct module_mapping
 
 struct signal_state
 {
-    std::array<struct sigaction, 10> previous_actions{};
+    std::array<struct sigaction, 9> previous_actions{};
     bool installed{};
 };
 
@@ -1240,7 +1240,7 @@ void exception_handler::install(const std::filesystem::path& log_file_path)
 
     constexpr int k_signals[]{
         SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE,
-        SIGTRAP, SIGSYS, SIGXCPU, SIGXFSZ, SIGTERM
+        SIGTRAP, SIGSYS, SIGXCPU, SIGXFSZ
     };
     for (std::size_t index{}; index < std::size(k_signals); ++index)
     {
@@ -1275,7 +1275,7 @@ void exception_handler::uninstall()
 
     constexpr int k_signals[]{
         SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE,
-        SIGTRAP, SIGSYS, SIGXCPU, SIGXFSZ, SIGTERM
+        SIGTRAP, SIGSYS, SIGXCPU, SIGXFSZ
     };
     for (std::size_t index{}; index < std::size(k_signals); ++index)
     {

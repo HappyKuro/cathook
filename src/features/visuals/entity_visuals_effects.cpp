@@ -20,7 +20,17 @@ struct glow_batch {
 };
 
 std::vector<glow_batch> glow_batches{};
-thread_local bool rendering_effect = false;
+thread_local unsigned int rendering_effect_depth = 0;
+
+class rendering_effect_scope final {
+public:
+  rendering_effect_scope() { ++rendering_effect_depth; }
+  rendering_effect_scope(const rendering_effect_scope&) = delete;
+  rendering_effect_scope& operator=(const rendering_effect_scope&) = delete;
+  ~rendering_effect_scope() {
+    if (rendering_effect_depth > 0) --rendering_effect_depth;
+  }
+};
 Material* mat_glow_color = nullptr;
 Material* mat_halo = nullptr;
 Material* mat_blur_x = nullptr;
@@ -33,7 +43,6 @@ std::vector<Texture*> retired_textures{};
 int resource_width = 0;
 int resource_height = 0;
 bool resources_ready = false;
-std::uint64_t glow_material_generation = 0;
 bool bloom_amount_initialized = false;
 
 constexpr float glow_scale_max = 10.0f;
@@ -53,18 +62,13 @@ constexpr float glow_scale_max = 10.0f;
 class render_context_scope final {
 public:
   explicit render_context_scope(MaterialSystem* material_system)
-    : context_(material_system != nullptr ? material_system->get_render_context() : nullptr) {
-    if (context_ != nullptr) context_->begin_render();
-  }
+    : context_(material_system != nullptr ? material_system->get_render_context() : nullptr) {}
 
   render_context_scope(const render_context_scope&) = delete;
   render_context_scope& operator=(const render_context_scope&) = delete;
 
   ~render_context_scope() {
-    if (context_ != nullptr) {
-      context_->end_render();
-      context_->release();
-    }
+    if (context_ != nullptr) context_->release();
   }
 
   [[nodiscard]] RenderContext* get() const { return context_; }
@@ -133,21 +137,50 @@ void reset_resource_handles()
 
 void release_resources()
 {
-  if (mat_glow_color != nullptr) mat_glow_color->decrement_reference_count();
-  if (mat_halo != nullptr) mat_halo->decrement_reference_count();
-  if (mat_blur_x != nullptr) mat_blur_x->decrement_reference_count();
-  if (mat_blur_y != nullptr) mat_blur_y->decrement_reference_count();
-  if (render_buffer_0 != nullptr) render_buffer_0->decrement_reference_count();
-  if (render_buffer_1 != nullptr) render_buffer_1->decrement_reference_count();
+  auto release_material = [](Material* material) {
+    if (material == nullptr) return;
+    material->decrement_reference_count();
+    material->delete_if_unreferenced();
+  };
+  auto release_texture = [](Texture* texture) {
+    if (texture == nullptr) return;
+    texture->decrement_reference_count();
+    texture->delete_if_unreferenced();
+  };
+  release_material(mat_glow_color);
+  release_material(mat_halo);
+  release_material(mat_blur_x);
+  release_material(mat_blur_y);
+  release_texture(render_buffer_0);
+  release_texture(render_buffer_1);
   for (Material* material : retired_materials) {
-    if (material != nullptr) material->decrement_reference_count();
+    release_material(material);
   }
   for (Texture* texture : retired_textures) {
-    if (texture != nullptr) texture->decrement_reference_count();
+    release_texture(texture);
   }
   retired_materials.clear();
   retired_textures.clear();
   reset_resource_handles();
+}
+
+Material* find_engine_material(const char* name)
+{
+  if (material_system == nullptr || name == nullptr) return nullptr;
+  Material* material = material_system->find_material(name, "Other", false, nullptr);
+  if (material == nullptr || material->is_error_material()) return nullptr;
+  material->increment_reference_count();
+  return material;
+}
+
+bool bind_base_texture(Material* material, Texture* texture)
+{
+  if (material == nullptr || texture == nullptr) return false;
+  bool found = false;
+  MaterialVar* base_texture = material->find_var("$basetexture", &found, false);
+  if (!found || base_texture == nullptr) return false;
+  base_texture->set_texture_value(texture);
+  return true;
 }
 
 void retire_resources()
@@ -179,28 +212,24 @@ bool ensure_resources()
   }
   if (!materials.load()) return false;
 
-  mat_glow_color = material_system->find_material("dev/glow_color", "Other", false, nullptr);
-  if (mat_glow_color != nullptr) mat_glow_color->increment_reference_count();
+  mat_glow_color = find_engine_material("dev/glow_color");
 
   render_buffer_0 = material_system->create_named_render_target_texture_ex(
-    "monolilth_glow_buffer_0", screen.x, screen.y, rt_size_literal, image_format_rgba8888,
-    material_rt_depth_separate, texture_flags_clamps | texture_flags_clampt | texture_flags_eight_bit_alpha, create_render_target_flags_hdr);
+    "monolilth_glow_buffer_0", screen.x, screen.y, rt_size_literal, image_format_rgb888,
+    material_rt_depth_shared, texture_flags_clamps | texture_flags_clampt | texture_flags_eight_bit_alpha, create_render_target_flags_hdr);
   render_buffer_1 = material_system->create_named_render_target_texture_ex(
-    "monolilth_glow_buffer_1", screen.x, screen.y, rt_size_literal, image_format_rgba8888,
-    material_rt_depth_separate, texture_flags_clamps | texture_flags_clampt | texture_flags_eight_bit_alpha, create_render_target_flags_hdr);
+    "monolilth_glow_buffer_1", screen.x, screen.y, rt_size_literal, image_format_rgb888,
+    material_rt_depth_shared, texture_flags_clamps | texture_flags_clampt | texture_flags_eight_bit_alpha, create_render_target_flags_hdr);
+  if (render_buffer_0 != nullptr) render_buffer_0->increment_reference_count();
+  if (render_buffer_1 != nullptr) render_buffer_1->increment_reference_count();
 
-  const auto generation = ++glow_material_generation;
-  mat_halo = materials.create_runtime_material(
-    "monolilth_glow_halo_" + std::to_string(generation),
-    "\"UnlitGeneric\"\n{\n\t$basetexture \"monolilth_glow_buffer_0\"\n\t$additive \"1\"\n}");
-  mat_blur_x = materials.create_runtime_material(
-    "monolilth_glow_blur_x_" + std::to_string(generation),
-    "\"BlurFilterX\"\n{\n\t$basetexture \"monolilth_glow_buffer_0\"\n}");
-  mat_blur_y = materials.create_runtime_material(
-    "monolilth_glow_blur_y_" + std::to_string(generation),
-    "\"BlurFilterY\"\n{\n\t$basetexture \"monolilth_glow_buffer_1\"\n}");
+  mat_halo = find_engine_material("dev/halo_add_to_screen");
+  mat_blur_x = find_engine_material("dev/blurfilterx");
+  mat_blur_y = find_engine_material("dev/blurfiltery");
+  const bool textures_bound = bind_base_texture(mat_halo, render_buffer_0) &&
+    bind_base_texture(mat_blur_x, render_buffer_0) && bind_base_texture(mat_blur_y, render_buffer_1);
   resources_ready = mat_glow_color != nullptr && mat_halo != nullptr && mat_blur_x != nullptr &&
-    mat_blur_y != nullptr && render_buffer_0 != nullptr && render_buffer_1 != nullptr;
+    mat_blur_y != nullptr && render_buffer_0 != nullptr && render_buffer_1 != nullptr && textures_bound;
   if (resources_ready) {
     resource_width = static_cast<int>(screen.x);
     resource_height = static_cast<int>(screen.y);
@@ -225,9 +254,8 @@ void draw_layer(const std::vector<chams_layer>& layers, const float distance, co
     model_render->forced_material_override(definition->material);
     if (definition->invert_cull) context->set_cull_mode(MATERIAL_CULLMODE_CW);
     if (visible_pass && two_models && definition->block_occluded) context->set_stencil_zfail_mode(STENCILOPERATION_REPLACE);
-    rendering_effect = true;
+    rendering_effect_scope rendering_scope{};
     call_original(instance, state, info, bones);
-    rendering_effect = false;
     if (definition->invert_cull) context->set_cull_mode(MATERIAL_CULLMODE_CCW);
     if (visible_pass && two_models && definition->block_occluded) context->set_stencil_zfail_mode(STENCILOPERATION_KEEP);
   }
@@ -300,25 +328,34 @@ bool glow_entity_valid(const glow_entity& item)
 
 void draw_glow_entities(const glow_batch& batch, const int width, const int height, RenderContext* context)
 {
+  std::vector<const glow_entity*> valid_entities{};
+  valid_entities.reserve(batch.entities.size());
+  for (const glow_entity& item : batch.entities) {
+    if (glow_entity_valid(item)) valid_entities.emplace_back(&item);
+  }
+  if (valid_entities.empty()) return;
+
   RGBA_float original_color{};
   render_view->get_color_modulation(&original_color);
   const float original_blend = render_view->get_blend();
+  const RGBA_float white{.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f};
 
+  context->set_stencil_enable(false);
+  context->clear_buffers(false, false, true);
   model_render->forced_material_override(mat_glow_color);
   context->set_stencil_enable(true);
   context->set_stencil_reference_count(1);
   context->set_stencil_write_mask(0xFF);
-  context->set_stencil_test_mask(0xFF);
+  context->set_stencil_test_mask(0x0);
   context->set_stencil_compare_mode(STENCILCOMPARISONFUNCTION_ALWAYS);
   context->set_stencil_pass_mode(STENCILOPERATION_REPLACE);
   context->set_stencil_fail_mode(STENCILOPERATION_KEEP);
   context->set_stencil_zfail_mode(STENCILOPERATION_REPLACE);
+  render_view->set_color_modulation(&white);
   render_view->set_blend(0.0f);
-  for (const glow_entity& item : batch.entities) {
-    if (!glow_entity_valid(item)) continue;
-    rendering_effect = true;
-    call_original(model_render, item.state, item.info, item.bones);
-    rendering_effect = false;
+  for (const glow_entity* item : valid_entities) {
+    rendering_effect_scope rendering_scope{};
+    call_original(model_render, item->state, item->info, item->bones);
   }
 
   context->push_render_target_and_viewport();
@@ -326,13 +363,11 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
   context->viewport(0, 0, width, height);
   context->clear_color4ub(0, 0, 0, 0);
   context->set_stencil_enable(false);
-  context->clear_buffers(true, true, true);
-  for (const glow_entity& item : batch.entities) {
-    if (!glow_entity_valid(item)) continue;
-    materials.set_color(nullptr, item.color);
-    rendering_effect = true;
-    call_original(model_render, item.state, item.info, item.bones);
-    rendering_effect = false;
+  context->clear_buffers(true, true, false);
+  for (const glow_entity* item : valid_entities) {
+    materials.set_color(nullptr, item->color);
+    rendering_effect_scope rendering_scope{};
+    call_original(model_render, item->state, item->info, item->bones);
   }
   context->pop_render_target_and_viewport();
 
@@ -463,6 +498,11 @@ void on_render_end()
   glow_batches.clear();
 }
 
+bool is_rendering_effect()
+{
+  return rendering_effect_depth != 0;
+}
+
 void on_draw_model_execute(void* instance, const DrawModelState& state, const ModelRenderInfo& info, matrix_3x4* bones)
 {
   if (draw_model_execute_original == nullptr) return;
@@ -470,7 +510,7 @@ void on_draw_model_execute(void* instance, const DrawModelState& state, const Mo
     call_original(instance, state, info, bones);
     return;
   }
-  if (rendering_effect || model_render == nullptr || !materials.loaded() || entity_list == nullptr ||
+  if (is_rendering_effect() || model_render == nullptr || !materials.loaded() || entity_list == nullptr ||
       engine == nullptr || engine->is_drawing_loading_image()) {
     call_original(instance, state, info, bones);
     return;

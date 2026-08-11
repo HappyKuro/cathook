@@ -23,7 +23,9 @@ enum flag_status {
 class CaptureFlag : public Entity {
 public:
   enum flag_status get_status(void) {
-    return (flag_status)*(int*)(this + 0xC48);
+    static const int netvar_offset = tf2_netvars::find_offset("DT_CaptureFlag", {"m_nFlagStatus"});
+    const auto offset = netvar_offset > 0 ? netvar_offset : 0xC48;
+    return static_cast<flag_status>(*reinterpret_cast<int*>(reinterpret_cast<uintptr_t>(this) + static_cast<uintptr_t>(offset)));
   }
 
 };

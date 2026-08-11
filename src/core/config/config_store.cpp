@@ -619,6 +619,7 @@ void config_store::import_config(const Config& config)
     set_bool("misc.automation.navbot_draw_path_boxes", config.misc.automation.navbot_draw_path_boxes);
     set_color("misc.automation.navbot_path_color", config.misc.automation.navbot_path_color);
     set_bool("misc.automation.navbot_dont_path_during_warmup", config.misc.automation.navbot_dont_path_during_warmup);
+    set_bool("misc.automation.navbot_hazards", config.misc.automation.navbot_hazards);
     set_bool("misc.automation.navbot_look_at_path", config.misc.automation.navbot_look_at_path);
     set_bool("misc.automation.navbot_look_at_path_silent", config.misc.automation.navbot_look_at_path_silent);
     set_int("misc.automation.navbot_weapon_selection", static_cast<int>(config.misc.automation.navbot_weapon_selection));
@@ -1433,6 +1434,9 @@ void config_store::export_config(Config& config) const
     config.misc.automation.navbot_dont_path_during_warmup = get_bool(
         "misc.automation.navbot_dont_path_during_warmup",
         legacy_navbot_warmup_block);
+    config.misc.automation.navbot_hazards = get_bool(
+        "misc.automation.navbot_hazards",
+        config.misc.automation.navbot_hazards);
     config.misc.automation.navbot_look_at_path = get_bool("misc.automation.navbot_look_at_path", config.misc.automation.navbot_look_at_path);
     config.misc.automation.navbot_look_at_path_silent = get_bool(
         "misc.automation.navbot_look_at_path_silent",

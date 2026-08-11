@@ -7,6 +7,8 @@ using draw_model_execute_fn = void (*)(void*, const DrawModelState&, const Model
 
 extern draw_model_execute_fn draw_model_execute_original;
 
+[[nodiscard]] bool is_rendering_effect();
+
 void on_render_start();
 void on_post_screen_space_effects();
 void on_render_end();

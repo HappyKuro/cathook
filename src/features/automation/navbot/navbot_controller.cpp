@@ -45,6 +45,7 @@ constexpr float goal_retry_interval = 0.2f;
 constexpr float path_retry_interval = 1.0f;
 constexpr float transition_failure_retry_seconds = 5.0f;
 constexpr float path_job_timeout = 5.0f;
+constexpr uint32_t hazard_intersection_blacklist_failures = 8;
 constexpr float weapon_switch_interval = 0.35f;
 constexpr float navbot_throwable_look_suppress_seconds = 0.55f;
 constexpr int team_unassigned = 0;
@@ -1467,7 +1468,7 @@ void navbot_controller::clear_draw_snapshot()
 
 bool navbot_controller::record_crumb_failure(const follower_tick_result& follow_result, float current_time)
 {
-  if (!follow_result.failed)
+  if (!follow_result.failed || !config.misc.automation.navbot_hazards)
   {
     return false;
   }
@@ -1491,7 +1492,10 @@ bool navbot_controller::record_crumb_failure(const follower_tick_result& follow_
 
   ++crumb_failure_.count;
   crumb_failure_.last_failure_time = current_time;
-  if (crumb_failure_.count < 2)
+  const auto required_failures = follow_result.failure_reason == follower_failure_reason::hazard_intersection
+    ? hazard_intersection_blacklist_failures
+    : 2u;
+  if (crumb_failure_.count < required_failures)
   {
     return false;
   }
@@ -1721,11 +1725,10 @@ void navbot_controller::on_create_move(user_cmd* user_cmd)
   if (follow_result.failed)
   {
     const auto blacklisted_crumb = record_crumb_failure(follow_result, current_time);
-    const auto transition_failed = (follow_result.failure_reason == follower_failure_reason::hazard_intersection
-      || follow_result.failure_reason == follower_failure_reason::blocked
+    const auto transition_failed = (follow_result.failure_reason == follower_failure_reason::blocked
       || follow_result.failure_reason == follower_failure_reason::no_progress)
       && nav_edge_valid(follow_result.failed_edge);
-    if (transition_failed)
+    if (transition_failed && config.misc.automation.navbot_hazards)
     {
       hazards_.add_transition_failure(
         follow_result.failed_edge,
@@ -1733,10 +1736,19 @@ void navbot_controller::on_create_move(user_cmd* user_cmd)
         transition_failure_retry_seconds);
     }
 
+    if (follow_result.failure_reason == follower_failure_reason::hazard_intersection
+      && !blacklisted_crumb)
+    {
+      debug_state_.last_failure = follower_failure_reason::none;
+      debug_state_.runtime_state = "following";
+      debug_state_.has_active_path = follower_.has_path();
+      return;
+    }
+
     debug_state_.last_failure = follow_result.failure_reason;
     debug_state_.runtime_state = "recovering";
     debug_state_.has_active_path = false;
-    if ((blacklisted_crumb || follow_result.failure_reason == follower_failure_reason::hazard_intersection) && active_goal_.valid)
+    if (blacklisted_crumb && active_goal_.valid)
     {
       jobs_.cancel_generation(current_generation_id_);
       pending_job_ = {};
@@ -2386,6 +2398,15 @@ int hazard_priority(hazard_kind kind)
 
 void navbot_controller::update_hazards()
 {
+  if (!config.misc.automation.navbot_hazards)
+  {
+    if (!hazards_.records().empty())
+    {
+      hazards_.clear();
+    }
+    return;
+  }
+
   if constexpr (textmode_build)
   {
     hazards_.clear_soft_costs();

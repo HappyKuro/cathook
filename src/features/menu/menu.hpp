@@ -1955,6 +1955,7 @@ static void draw_navbot_content() {
     cat_menu::checkbox("Draw path boxes", &config.misc.automation.navbot_draw_path_boxes);
     cat_menu::color_picker("Path color", &config.misc.automation.navbot_path_color);
     cat_menu::checkbox("Don't path during warmup", &config.misc.automation.navbot_dont_path_during_warmup);
+    cat_menu::checkbox("Dynamic hazards", &config.misc.automation.navbot_hazards);
     static const char* navbot_weapon_selection_items[] = {
       "Off",
       "Auto",
