@@ -127,7 +127,8 @@ inline void reset_input_history() {
   current_state().active_target = false;
 }
 
-aimbot_run_result run(user_cmd* cmd, const Vec3& original_view_angles);
+aimbot_run_result run(user_cmd* cmd, const Vec3& original_view_angles,
+  bool manual_attack = false);
 void apply_walk_to_target(Player* localplayer, user_cmd* cmd);
 void update_local_client_side_animation();
 void capture_latest_network_pose(Player* player, bool animation_already_updated = false);

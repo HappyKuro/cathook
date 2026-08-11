@@ -16,6 +16,7 @@ V  o o  V  file: src/core/config/config_store.cpp
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -73,6 +74,11 @@ std::vector<int> parse_int_list(const std::string_view value)
     std::ranges::sort(result);
     result.erase(std::ranges::unique(result).begin(), result.end());
     return result;
+}
+
+float normalize_stencil_scale(const float value)
+{
+    return std::clamp(std::round(value * 10.0f) / 10.0f, 0.0f, 10.0f);
 }
 
 }
@@ -222,6 +228,7 @@ void config_store::import_config(const Config& config)
 {
     m_values.clear();
 
+#if 0 // Inventory changer config temporarily disabled.
     const auto save_inventory_slot = [this](const std::string& prefix, const Misc::InventorySlot& slot) {
         set_int(prefix + ".item", slot.item);
         set_int(prefix + ".paintkit", slot.paintkit);
@@ -232,6 +239,7 @@ void config_store::import_config(const Config& config)
         set_int(prefix + ".killstreak", slot.killstreak);
         set_int(prefix + ".unusual", slot.unusual);
     };
+#endif
 
     const bool spectator_indicator_enabled = (config.visuals.indicators.enabled_mask & Visuals::Indicators::spectators) != 0;
     const bool keybind_indicator_enabled = (config.visuals.indicators.enabled_mask & Visuals::Indicators::keybinds) != 0;
@@ -363,7 +371,7 @@ void config_store::import_config(const Config& config)
             set_bool(layer_prefix + "smooth_alpha", layer.smooth_alpha);
         }
         set_color(prefix + "glow.color", group.glow.color);
-        set_int(prefix + "glow.stencil", group.glow.stencil);
+        set_float(prefix + "glow.stencil", normalize_stencil_scale(group.glow.stencil));
         set_float(prefix + "glow.blur", group.glow.blur);
         set_float(prefix + "glow.start", group.glow.start);
         set_float(prefix + "glow.end", group.glow.end);
@@ -387,7 +395,7 @@ void config_store::import_config(const Config& config)
         save_backtrack_layers("visible", group.backtrack_visuals.chams.visible);
         save_backtrack_layers("occluded", group.backtrack_visuals.chams.occluded);
         set_color(prefix + "backtrack_visuals.glow.color", group.backtrack_visuals.glow.color);
-        set_int(prefix + "backtrack_visuals.glow.stencil", group.backtrack_visuals.glow.stencil);
+        set_float(prefix + "backtrack_visuals.glow.stencil", normalize_stencil_scale(group.backtrack_visuals.glow.stencil));
         set_float(prefix + "backtrack_visuals.glow.blur", group.backtrack_visuals.glow.blur);
         set_float(prefix + "backtrack_visuals.glow.start", group.backtrack_visuals.glow.start);
         set_float(prefix + "backtrack_visuals.glow.end", group.backtrack_visuals.glow.end);
@@ -509,6 +517,7 @@ void config_store::import_config(const Config& config)
     set_int("misc.exploits.ping_target", config.misc.exploits.ping_target);
     set_bool("misc.exploits.no_engine_sleep", config.misc.exploits.no_engine_sleep);
     set_bool("misc.exploits.null_graphics", config.misc.exploits.null_graphics);
+#if 0 // Inventory changer config temporarily disabled.
     set_bool("misc.inventory_changer.enabled", config.misc.inventory_changer.enabled);
     set_bool("misc.inventory_changer.apply_to_all", config.misc.inventory_changer.apply_to_all);
     set_bool("misc.inventory_changer.debug", config.misc.inventory_changer.debug);
@@ -524,6 +533,7 @@ void config_store::import_config(const Config& config)
     set_int("misc.inventory_changer.taunt1_unusual", config.misc.inventory_changer.taunt1_unusual);
     set_int("misc.inventory_changer.crate", config.misc.inventory_changer.crate);
     set_int("misc.inventory_changer.key", config.misc.inventory_changer.key);
+#endif
     set_bool("misc.exploits.keybind_indicator", keybind_indicator_enabled);
     set_float("misc.exploits.keybind_indicator_x", config.visuals.indicators.keybinds_x);
     set_float("misc.exploits.keybind_indicator_y", config.visuals.indicators.keybinds_y);
@@ -644,6 +654,7 @@ void config_store::import_config(const Config& config)
 
 void config_store::export_config(Config& config) const
 {
+#if 0 // Inventory changer config temporarily disabled.
     const auto load_inventory_slot = [this](const std::string& prefix, Misc::InventorySlot& slot) {
         slot.item = get_int(prefix + ".item", slot.item);
         slot.paintkit = get_int(prefix + ".paintkit", slot.paintkit);
@@ -654,6 +665,7 @@ void config_store::export_config(Config& config) const
         slot.killstreak = get_int(prefix + ".killstreak", slot.killstreak);
         slot.unusual = get_int(prefix + ".unusual", slot.unusual);
     };
+#endif
     int legacy_indicator_mask{ 0 };
     if (get_bool("misc.exploits.tickbase_indicator", config.misc.exploits.legacy_tickbase_indicator))
     {
@@ -922,7 +934,7 @@ void config_store::export_config(Config& config) const
         load_layers("visible", group.chams.visible);
         load_layers("occluded", group.chams.occluded);
         group.glow.color = get_color(prefix + "glow.color", group.glow.color);
-        group.glow.stencil = std::clamp(get_int(prefix + "glow.stencil", group.glow.stencil), 0, 10);
+        group.glow.stencil = normalize_stencil_scale(get_float(prefix + "glow.stencil", group.glow.stencil));
         group.glow.blur = std::clamp(get_float(prefix + "glow.blur", group.glow.blur), 0.0f, 10.0f);
         group.glow.start = std::clamp(get_float(prefix + "glow.start", group.glow.start), 0.0f, 2048.0f);
         group.glow.end = std::clamp(get_float(prefix + "glow.end", group.glow.end), 0.0f, 8192.0f);
@@ -953,8 +965,8 @@ void config_store::export_config(Config& config) const
         load_backtrack_layers("visible", group.backtrack_visuals.chams.visible);
         load_backtrack_layers("occluded", group.backtrack_visuals.chams.occluded);
         group.backtrack_visuals.glow.color = get_color(prefix + "backtrack_visuals.glow.color", group.backtrack_visuals.glow.color);
-        group.backtrack_visuals.glow.stencil = std::clamp(
-            get_int(prefix + "backtrack_visuals.glow.stencil", group.backtrack_visuals.glow.stencil), 0, 10);
+        group.backtrack_visuals.glow.stencil = normalize_stencil_scale(
+            get_float(prefix + "backtrack_visuals.glow.stencil", group.backtrack_visuals.glow.stencil));
         group.backtrack_visuals.glow.blur = std::clamp(
             get_float(prefix + "backtrack_visuals.glow.blur", group.backtrack_visuals.glow.blur), 0.0f, 10.0f);
         group.backtrack_visuals.glow.start = std::clamp(
@@ -1163,6 +1175,7 @@ void config_store::export_config(Config& config) const
         100);
     config.misc.exploits.no_engine_sleep = get_bool("misc.exploits.no_engine_sleep", config.misc.exploits.no_engine_sleep);
     config.misc.exploits.null_graphics = get_bool("misc.exploits.null_graphics", config.misc.exploits.null_graphics);
+#if 0 // Inventory changer config temporarily disabled.
     config.misc.inventory_changer.enabled = get_bool(
         "misc.inventory_changer.enabled", config.misc.inventory_changer.enabled);
     config.misc.inventory_changer.apply_to_all = get_bool(
@@ -1187,6 +1200,7 @@ void config_store::export_config(Config& config) const
         "misc.inventory_changer.crate", config.misc.inventory_changer.crate);
     config.misc.inventory_changer.key = get_int(
         "misc.inventory_changer.key", config.misc.inventory_changer.key);
+#endif
 #if defined(CATHOOK_TEXTMODE) && CATHOOK_TEXTMODE
 
     config.misc.exploits.null_graphics = true;

@@ -1,3 +1,5 @@
+#if 0 // Inventory changer temporarily disabled.
+
 namespace inventory_changer
 {
 namespace
@@ -574,3 +576,5 @@ float attribute_hook_value_float_hook(const float value, const char* attribute_n
 }
 
 }
+
+#endif

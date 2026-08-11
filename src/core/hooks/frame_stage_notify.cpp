@@ -149,9 +149,7 @@ void frame_stage_notify_hook(void* me, ClientFrameStage current_stage) {
 
   frame_stage_notify_original(me, current_stage);
 
-  if (current_stage == FRAME_NET_UPDATE_POSTDATAUPDATE_START) {
-    inventory_changer::on_frame_stage(current_stage);
-  }
+  // Inventory changer frame-stage handler temporarily disabled.
 
   if (current_stage == FRAME_RENDER_START) {
     aimbot_note_render_clock();

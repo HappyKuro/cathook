@@ -16,7 +16,7 @@ V  o o  V  file: src/features/menu/menu.hpp
 #include "core/detach.hpp"
 #include "core/ipc/ipc_client.hpp"
 #include "core/logger.hpp"
-#include "features/automation/inventory_changer/inventory_changer.hpp"
+// #include "features/automation/inventory_changer/inventory_changer.hpp" // Temporarily disabled.
 #include "features/automation/navbot/navbot_types.hpp"
 #include "features/automation/region_selector/region_selector.hpp"
 #include "features/visuals/material_manager.hpp"
@@ -154,6 +154,7 @@ inline bool slider_float(const char* label, float* value, float minimum, float m
 inline bool checkbox(const char* label, bool* value);
 inline bool accent_button(const char* label, const ImVec2& size, bool danger);
 
+#if 0 // Inventory changer UI temporarily disabled.
 static constexpr const char* inventory_wear_items[] = {
   "Default", "Factory New (0.001)", "Minimal Wear (0.12)", "Field-Tested (0.37)",
   "Well-Worn (0.45)", "Battle-Scarred (0.90)"
@@ -230,6 +231,7 @@ inline void draw_inventory_definition(const char* label, int* definition, invent
     *definition = options[static_cast<std::size_t>(selected)].definition;
   }
 }
+#endif
 
 inline bool render_material_layers(const char* title, std::vector<chams_layer>& layers) {
   bool changed = false;
@@ -314,7 +316,7 @@ enum automation_subtab_id
 {
   automation_subtab_general,
   automation_subtab_queue,
-  automation_subtab_inventory_changer,
+  // automation_subtab_inventory_changer, // Temporarily disabled.
   automation_subtab_items_chat,
   automation_subtab_navbot,
   automation_subtab_medic,
@@ -1693,7 +1695,8 @@ static void draw_visual_groups_content_tfwin() {
   if (ImGui::BeginChild("visual_glow_panel", { 0.0f, 0.0f }, inspector_panel_flags)) {
     draw_panel_header("glow");
     cat_menu::color_picker("Color", &group.glow.color);
-    cat_menu::slider_int("Stencil scale", &group.glow.stencil, 0, 10);
+    cat_menu::slider_float("Stencil scale", &group.glow.stencil, 0.0f, 10.0f, "%.1f");
+    group.glow.stencil = std::clamp(std::round(group.glow.stencil * 10.0f) / 10.0f, 0.0f, 10.0f);
     cat_menu::slider_float("Blur scale", &group.glow.blur, 0.0f, 10.0f, "%.1f");
     cat_menu::slider_float("Render start", &group.glow.start, 0.0f, 2048.0f, "%.0f HU");
     cat_menu::slider_float("Render end", &group.glow.end, 512.0f, 8192.0f, "%.0f HU");
@@ -1720,7 +1723,8 @@ static void draw_visual_groups_content_tfwin() {
     cat_menu::render_material_layers("Backtrack behind walls layers", backtrack.chams.occluded);
     ImGui::TextUnformatted("Backtrack glow");
     cat_menu::color_picker("Backtrack color", &backtrack.glow.color);
-    cat_menu::slider_int("Backtrack stencil scale", &backtrack.glow.stencil, 0, 10);
+    cat_menu::slider_float("Backtrack stencil scale", &backtrack.glow.stencil, 0.0f, 10.0f, "%.1f");
+    backtrack.glow.stencil = std::clamp(std::round(backtrack.glow.stencil * 10.0f) / 10.0f, 0.0f, 10.0f);
     cat_menu::slider_float("Backtrack blur scale", &backtrack.glow.blur, 0.0f, 10.0f, "%.1f");
     cat_menu::slider_float("Backtrack render start", &backtrack.glow.start, 0.0f, 2048.0f, "%.0f HU");
     cat_menu::slider_float("Backtrack render end", &backtrack.glow.end, 512.0f, 8192.0f, "%.0f HU");
@@ -2340,6 +2344,7 @@ static void draw_automation_utilities_content() {
   cat_menu::end_flow_layout();
 }
 
+#if 0 // Inventory changer UI temporarily disabled.
 static void draw_inventory_changer_content() {
   cat_menu::begin_flow_layout("inventory_changer_layout", 2);
   cat_menu::flow_panel("Inventory changer", 0, 238.0f, [&]() {
@@ -2378,6 +2383,7 @@ static void draw_inventory_changer_content() {
   });
   cat_menu::end_flow_layout();
 }
+#endif
 
 static void draw_autoitem_content() {
   cat_menu::begin_flow_layout("autoitem_layout", 2);
@@ -2478,7 +2484,6 @@ static void draw_automation_tab(const int automation_subtab) {
   switch (automation_subtab) {
     case cat_menu::automation_subtab_general: draw_automation_utilities_content(); break;
     case cat_menu::automation_subtab_queue: draw_queue_content(); break;
-    case cat_menu::automation_subtab_inventory_changer: draw_inventory_changer_content(); break;
     case cat_menu::automation_subtab_items_chat: draw_autoitem_content(); draw_chat_content(); break;
     case cat_menu::automation_subtab_navbot: draw_navbot_content(); break;
     case cat_menu::automation_subtab_medic: draw_medic_content(); break;
@@ -3091,7 +3096,6 @@ static void warmup_bind_targets()
   draw_combat_tab(1);
   draw_automation_tab(cat_menu::automation_subtab_general);
   draw_automation_tab(cat_menu::automation_subtab_queue);
-  draw_automation_tab(cat_menu::automation_subtab_inventory_changer);
   draw_automation_tab(cat_menu::automation_subtab_items_chat);
   draw_automation_tab(cat_menu::automation_subtab_navbot);
   draw_automation_tab(cat_menu::automation_subtab_medic);
@@ -3175,7 +3179,6 @@ static void draw_menu(void) {
       case cathook_tab_automation:
         if (subnavbar_entry("General", automation_section == cat_menu::automation_subtab_general)) automation_section = cat_menu::automation_subtab_general;
         if (subnavbar_entry("Queue", automation_section == cat_menu::automation_subtab_queue)) automation_section = cat_menu::automation_subtab_queue;
-        if (subnavbar_entry("Inventory changer", automation_section == cat_menu::automation_subtab_inventory_changer)) automation_section = cat_menu::automation_subtab_inventory_changer;
         if (subnavbar_entry("Items & chat", automation_section == cat_menu::automation_subtab_items_chat)) automation_section = cat_menu::automation_subtab_items_chat;
         if (subnavbar_entry("Navbot", automation_section == cat_menu::automation_subtab_navbot)) automation_section = cat_menu::automation_subtab_navbot;
         if (subnavbar_entry("Medic", automation_section == cat_menu::automation_subtab_medic)) automation_section = cat_menu::automation_subtab_medic;

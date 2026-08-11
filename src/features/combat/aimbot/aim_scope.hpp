@@ -26,7 +26,10 @@ inline bool is_sniper_rifle(Player* localplayer, Weapon* weapon) {
 }
 
 inline bool can_toggle(Player* localplayer, Weapon* weapon) {
-  return is_sniper_rifle(localplayer, weapon) && weapon->can_secondary_attack();
+  // can_secondary_attack() is a cooldown check.  It must not gate the state
+  // machine: doing so drops an unscope request and leaves the rifle scoped
+  // until another unrelated target transition occurs.
+  return is_sniper_rifle(localplayer, weapon);
 }
 
 inline void reset_auto_scope() {
@@ -51,15 +54,23 @@ inline bool policy_requires_scope(Player* localplayer, Weapon* weapon) {
     aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_charge);
 }
 
-inline bool target_within_auto_scope_range(Player* localplayer, Entity* entity) {
-  if (localplayer == nullptr || entity == nullptr || entity->is_dormant()) {
+inline bool target_within_auto_scope_range(Player* localplayer, const Vec3& target_origin) {
+  if (localplayer == nullptr || !aimbot_vec3_is_finite(target_origin)) {
     return false;
   }
 
   constexpr float auto_scope_range = 1850.0f;
-  const Vec3 delta = entity->get_origin() - localplayer->get_origin();
+  const Vec3 delta = target_origin - localplayer->get_origin();
+  if (!aimbot_vec3_is_finite(delta)) {
+    return false;
+  }
   return (delta.x * delta.x) + (delta.y * delta.y) + (delta.z * delta.z) <=
     auto_scope_range * auto_scope_range;
+}
+
+inline bool target_within_auto_scope_range(Player* localplayer, Entity* entity) {
+  return entity != nullptr && !entity->is_dormant() &&
+    target_within_auto_scope_range(localplayer, entity->get_origin());
 }
 
 inline bool enemy_target_within_auto_scope_range(Player* localplayer) {
@@ -75,7 +86,7 @@ inline bool enemy_target_within_auto_scope_range(Player* localplayer) {
   for (const entity_cache_player_entry& entry : entity_cache_players()) {
     if (entry.player != nullptr &&
         aimbot_player_skip_reason_for(localplayer, entry, weapon) == aimbot_player_skip_reason::none &&
-        target_within_auto_scope_range(localplayer, entry.entity)) {
+        target_within_auto_scope_range(localplayer, entry.origin)) {
       return true;
     }
   }

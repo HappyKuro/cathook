@@ -33,7 +33,7 @@ V  o o  V  file: src/cathook.cpp
 #include "core/diagnostics/exception_handler.hpp"
 #include "features/menu/binds.hpp"
 #include "features/automation/followbot/followbot.hpp"
-#include "features/automation/inventory_changer/inventory_changer.hpp"
+// #include "features/automation/inventory_changer/inventory_changer.hpp" // Temporarily disabled.
 #include "core/print.hpp"
 #include "core/assert.hpp"
 #include "core/detach.hpp"
@@ -99,7 +99,7 @@ bool (*in_cond_original)(void*, int) = nullptr;
 #include "core/hooks/model_render.cpp"
 #include "core/hooks/casual_medal.cpp"
 #include "core/hooks/equip_region_unlock.cpp"
-#include "features/automation/inventory_changer/inventory_changer.cpp"
+// #include "features/automation/inventory_changer/inventory_changer.cpp" // Temporarily disabled.
 #include "core/hooks/region_selector.cpp"
 #include "core/hooks/tf_gc_client_system.cpp"
 #include "core/hooks/inspect_target.cpp"
@@ -1468,7 +1468,7 @@ bool initialize_game_runtime() {
 
   item_schema_lookup_map_original = (std::uintptr_t (*)())sigscan_module("client.so", sigs::item_schema_lookup_map);
   error_assert(item_schema_lookup_map_original == nullptr, "Failed to find item schema lookup map");
-  inventory_changer::set_client_module_address(reinterpret_cast<const void*>(item_schema_lookup_map_original));
+  // inventory_changer::set_client_module_address(reinterpret_cast<const void*>(item_schema_lookup_map_original)); // Temporarily disabled.
 
   item_definition_lookup_original =
     (std::uintptr_t (*)(std::uintptr_t, unsigned int))sigscan_module("client.so", sigs::item_definition_lookup);
@@ -1571,13 +1571,7 @@ bool initialize_game_runtime() {
   rv = funchook_prepare(funchook, (void**)&item_definition_lookup_original, (void*)item_definition_lookup_hook);
   error_assert(rv != 0, "Failed to prepare item definition lookup hook\n");
 
-  if (config.misc.inventory_changer.enabled) {
-    rv = funchook_prepare(
-      funchook,
-      (void**)&attribute_hook_value_float_original,
-      (void*)inventory_changer::attribute_hook_value_float_hook);
-    error_assert(rv != 0, "Failed to prepare float attribute hook\n");
-  }
+  // Inventory changer attribute hook temporarily disabled.
 
   rv = funchook_prepare(funchook, (void**)&inspect_target_check_original, (void*)inspect_target_check_hook);
   error_assert(rv != 0, "Failed to prepare inspect target check hook\n");

@@ -43,8 +43,8 @@ std::uintptr_t item_definition_lookup_hook(std::uintptr_t lookup_map, unsigned i
     return 0;
   }
 
-  const unsigned int redirected_index = inventory_changer::redirect_item_definition(item_index);
-  const std::uintptr_t item_definition = item_definition_lookup_original(lookup_map, redirected_index);
+  // Inventory changer redirect temporarily disabled.
+  const std::uintptr_t item_definition = item_definition_lookup_original(lookup_map, item_index);
   if (!should_unlock_equip_regions(lookup_map) || item_definition == 0)
   {
     return item_definition;

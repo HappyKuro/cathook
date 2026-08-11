@@ -756,14 +756,14 @@ void on_player_hurt(Player* attacker, Player* victim, int damage) {
   best->active = false;
 }
 
-aimbot_run_result run(user_cmd* cmd, const Vec3& original_view_angles) {
+aimbot_run_result run(user_cmd* cmd, const Vec3& original_view_angles, bool manual_attack) {
   aim_state::requested_shot = false;
   clear_frame_target();
 
   aimbot_run_context ctx{};
   ctx.cmd = cmd;
   ctx.source_angles = original_view_angles;
-  ctx.manual_attack = (cmd != nullptr && (cmd->buttons & IN_ATTACK) != 0);
+  ctx.manual_attack = manual_attack;
   ctx.debug.active = config.aimbot.master;
   ctx.debug.aim_mode = static_cast<int>(config.aimbot.aim_mode);
 
@@ -787,9 +787,7 @@ aimbot_run_result run(user_cmd* cmd, const Vec3& original_view_angles) {
 
   clear_invalid_state(ctx.local);
   find_target(ctx);
-  const aim_scope::decision scoped_command = ctx.manual_attack
-    ? aim_scope::decision{}
-    : aim_scope::resolve(ctx.local, ctx.weapon, ctx.target);
+  const aim_scope::decision scoped_command = aim_scope::resolve(ctx.local, ctx.weapon, ctx.target);
   if (apply_scope_command(ctx, scoped_command)) {
     return ctx.finish(scoped_command.reason);
   }

@@ -317,6 +317,10 @@ inline void draw_progress_indicator(
 
 inline void draw_tickbase_indicator()
 {
+  if (!config.misc.exploits.tickbase) {
+    return;
+  }
+
   const tickbase::indicator_state state = tickbase::get_indicator_state();
   const int maximum = std::max(1, state.max_processing_ticks);
   const int processing = std::clamp(state.processing_ticks, 0, maximum);

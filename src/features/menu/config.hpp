@@ -280,7 +280,7 @@ struct chams_settings {
 
 struct glow_settings {
   RGBA_float color{.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f};
-  int stencil = 0;
+  float stencil = 0.0f;
   float blur = 0.0f;
   float start = 0.0f;
   float end = 8192.0f;
@@ -562,6 +562,7 @@ struct Visuals {
 
 struct Misc {
 
+#if 0 // Inventory changer temporarily disabled.
   struct InventorySlot {
     int item = 0;
     int paintkit = 0;
@@ -593,6 +594,7 @@ struct Misc {
     int crate = 0;
     int key = 0;
   } inventory_changer;
+#endif
 
   struct Movement {
     enum class auto_strafe_mode {

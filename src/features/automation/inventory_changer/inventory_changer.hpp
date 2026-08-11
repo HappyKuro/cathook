@@ -6,6 +6,8 @@ class Entity;
 namespace inventory_changer
 {
 
+#if 0 // Inventory changer temporarily disabled.
+
 enum class item_category {
   weapon,
   wearable,
@@ -30,6 +32,8 @@ std::uint32_t redirect_item_definition(std::uint32_t item_definition);
 
 float attribute_hook_value_float_hook(float value, const char* attribute_name,
                                       Entity* entity, void* context, bool is_global);
+
+#endif
 
 }
 

@@ -337,6 +337,9 @@ auto is_weapon_supported_for_shift(Weapon* weapon) -> bool
   case TF_WEAPON_LUNCHBOX:
   case TF_WEAPON_BUFF_ITEM:
   case TF_WEAPON_GRAPPLINGHOOK:
+  case TF_WEAPON_SNIPERRIFLE:
+  case TF_WEAPON_SNIPERRIFLE_DECAP:
+  case TF_WEAPON_SNIPERRIFLE_CLASSIC:
     return false;
   default:
     return true;
@@ -819,7 +822,13 @@ auto run_rebuilt_move(float accumulated_extra_samples, bool final_tick, bool for
   }
 
   if (client_state->m_nSignonState == signon_state_full) {
-    if (force_send) {
+    if (!config.misc.exploits.tickbase) {
+      // Packet rebuilding may still be needed by fakelag/anti-aim/ping
+      // reducer, but it must not charge or retain tickbase state while the
+      // tickbase exploit itself is disabled.
+      g_state.processing_ticks = 0;
+      g_state.recharging = false;
+    } else if (force_send) {
       spend_shift_tick();
     } else {
       g_state.processing_ticks = std::min(max_processing_ticks(), g_state.processing_ticks + 1);

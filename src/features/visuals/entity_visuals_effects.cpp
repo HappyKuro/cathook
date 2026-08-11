@@ -42,9 +42,9 @@ constexpr float glow_scale_max = 10.0f;
   return normalized * normalized;
 }
 
-[[nodiscard]] int stencil_radius(const int scale)
+[[nodiscard]] int stencil_radius(const float scale)
 {
-  const float normalized = normalized_glow_scale(static_cast<float>(scale));
+  const float normalized = normalized_glow_scale(scale);
   return std::clamp(static_cast<int>(std::ceil(normalized * glow_scale_max)), 0, static_cast<int>(glow_scale_max));
 }
 

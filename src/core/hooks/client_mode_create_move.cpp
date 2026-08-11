@@ -148,6 +148,7 @@ static move_features_result run_move_features(user_cmd* user_cmd) {
   aimbot::clear_frame_target();
   backtrack::on_create_move(user_cmd);
   const Vec3 original_view_angles = user_cmd->view_angles;
+  const bool manual_attack = (user_cmd->buttons & IN_ATTACK) != 0;
 
   force_aimbot_autoreload_convar();
 
@@ -185,7 +186,7 @@ static move_features_result run_move_features(user_cmd* user_cmd) {
   start_engine_prediction(user_cmd);
   const aimbot::aimbot_run_result aimbot_result = suppress_aimbot
     ? aimbot::aimbot_run_result{}
-    : aimbot::run(user_cmd, original_view_angles);
+    : aimbot::run(user_cmd, original_view_angles, manual_attack);
   if (localplayer != nullptr && !suppress_aimbot && !aimbot_result.active_target && config.backtrack.to_crosshair) {
     backtrack::backtrack_to_crosshair(user_cmd, localplayer, localplayer->get_weapon());
   }
