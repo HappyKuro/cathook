@@ -1198,9 +1198,9 @@ bool is_first_local_ipc_peer_on_current_server()
   return true;
 }
 
-bool is_local_ipc_friend(std::uint32_t friend_id)
+bool is_known_local_ipc_friend(std::uint32_t friend_id)
 {
-  if (!auto_ignore_enabled.load(std::memory_order_acquire) || friend_id == 0)
+  if (friend_id == 0)
   {
     return false;
   }
@@ -1208,6 +1208,11 @@ bool is_local_ipc_friend(std::uint32_t friend_id)
   std::shared_lock lock{local_ipc_friends_mutex};
   auto local_ipc_friend_end = local_ipc_friends.begin() + static_cast<std::ptrdiff_t>(local_ipc_friend_count);
   return std::find(local_ipc_friends.begin(), local_ipc_friend_end, friend_id) != local_ipc_friend_end;
+}
+
+bool is_local_ipc_friend(std::uint32_t friend_id)
+{
+  return auto_ignore_enabled.load(std::memory_order_acquire) && is_known_local_ipc_friend(friend_id);
 }
 
 bool is_excess_ipc_bot_on_current_server(int max_bots)

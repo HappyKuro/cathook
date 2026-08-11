@@ -57,7 +57,6 @@ namespace
 {
 
 constexpr float auto_class_interval = 1.0f;
-constexpr float auto_report_interval = 5.0f;
 constexpr float auto_queue_interval = 5.0f;
 constexpr float auto_queue_loading_timeout = 120.0f;
 constexpr float auto_requeue_loading_timeout = 360.0f;
@@ -1758,7 +1757,6 @@ void automation_controller::run_auto_report()
     if (engine == nullptr || !engine->is_in_game())
     {
       reported_account_ids_.clear();
-      next_auto_report_time_ = 0.0f;
     }
     return;
   }
@@ -1766,16 +1764,9 @@ void automation_controller::run_auto_report()
   if (!engine->is_in_game())
   {
     reported_account_ids_.clear();
-    next_auto_report_time_ = 0.0f;
     return;
   }
 
-  if (global_vars->realtime < next_auto_report_time_)
-  {
-    return;
-  }
-
-  next_auto_report_time_ = global_vars->realtime + auto_report_interval;
   initialize_report_player_account();
   if (g_report_player_account == nullptr)
   {
@@ -1803,26 +1794,32 @@ void automation_controller::run_auto_report()
       continue;
     }
 
-    if (player->is_friend())
+    const auto account_id = static_cast<std::uint32_t>(info.friends_id);
+    if (cat_ipc::client::is_known_local_ipc_friend(account_id) ||
+        player->is_friend() ||
+        player->is_party() ||
+        player->is_ignored() ||
+        cathook::core::players::is_friendly(account_id) ||
+        cathook::core::players::is_ignored(account_id))
     {
       continue;
     }
 
-    if (std::ranges::find(reported_account_ids_, info.friends_id) != reported_account_ids_.end())
+    if (std::ranges::find(reported_account_ids_, account_id) != reported_account_ids_.end())
     {
       continue;
     }
 
-    const auto steam_id = SteamID(info.friends_id, 1, k_EUniversePublic, k_EAccountTypeIndividual);
-    if (g_report_player_account(static_cast<std::uint64_t>(steam_id.m_steamid.m_unAll64Bits), report_reason_cheating))
-    {
-      reported_account_ids_.push_back(info.friends_id);
+    const auto steam_id = SteamID(account_id, 1, k_EUniversePublic, k_EAccountTypeIndividual);
+    const bool report_sent = g_report_player_account(
+      static_cast<std::uint64_t>(steam_id.m_steamid.m_unAll64Bits),
+      report_reason_cheating);
+    (void)report_sent;
+    reported_account_ids_.push_back(account_id);
 #ifdef CATHOOK_DEBUG_AUTO_REPORT
 
-      print("[auto_report] reported %s (%lu)\n", info.name, info.friends_id);
+    print("[auto_report] %s %s (%lu)\n", report_sent ? "reported" : "report rejected", info.name, info.friends_id);
 #endif
-
-    }
   }
 }
 

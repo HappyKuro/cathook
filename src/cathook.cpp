@@ -751,6 +751,7 @@ void clear_runtime_pointer_state()
   region_selector_request_queue_for_match_original = nullptr;
   tf_gc_client_system_so_event_original = nullptr;
   tf_gc_client_system_request_accept_match_invite = nullptr;
+  tf_gc_client_system_join_mm_match = nullptr;
   prediction_run_simulation_original = nullptr;
   ctf_weapon_base_calc_is_attack_critical_original = nullptr;
   ctf_weapon_base_melee_calc_is_attack_critical_original = nullptr;
@@ -1524,6 +1525,12 @@ bool initialize_game_runtime() {
     (void (*)(void*, std::uint64_t))sigscan_module("client.so", sigs::tf_gc_client_system_request_accept_match_invite);
   if (tf_gc_client_system_request_accept_match_invite == nullptr) {
     print("Failed to find CTFGCClientSystem::RequestAcceptMatchInvite; auto casual invite accepting disabled\n");
+  }
+
+  tf_gc_client_system_join_mm_match =
+    (std::intptr_t (*)(void*))sigscan_module("client.so", sigs::tf_gc_client_system_join_mm_match);
+  if (tf_gc_client_system_join_mm_match == nullptr) {
+    print("Failed to find CTFGCClientSystem::JoinMMMatch; auto casual joining disabled\n");
   }
 
   auto host_should_run = (tickbase::host_should_run_fn)sigscan_module("engine.so", sigs::host_should_run);

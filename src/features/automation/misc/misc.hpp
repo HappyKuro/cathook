@@ -58,7 +58,6 @@ private:
   void run_boost_queueing();
 
   float next_class_action_time_ = 0.0f;
-  float next_auto_report_time_ = 0.0f;
   float next_queue_action_time_ = 0.0f;
   float next_noisemaker_time_ = 0.0f;
   float next_voice_command_time_ = 0.0f;

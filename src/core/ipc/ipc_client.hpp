@@ -28,6 +28,7 @@ void on_game_event(GameEvent* event);
 void shutdown();
 [[nodiscard]] bool connected();
 [[nodiscard]] int peer_id();
+[[nodiscard]] bool is_known_local_ipc_friend(std::uint32_t friend_id);
 [[nodiscard]] bool is_local_ipc_friend(std::uint32_t friend_id);
 [[nodiscard]] bool is_excess_ipc_bot_on_current_server(int max_bots);
 [[nodiscard]] int local_ipc_peer_count_on_current_server();

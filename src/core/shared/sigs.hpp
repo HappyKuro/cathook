@@ -134,6 +134,8 @@ constexpr const char* tf_gc_client_system_so_event =
   "55 48 89 E5 41 57 41 56 49 89 FE 48 89 F7 41 55 41 89 D5 41 54 49 89 F4 53 48 83 EC ? 48 8B 06 FF 50 10 3D D4 07 00 00 0F 84 ? ? ? ? 49 8B 04 24 4C 89 E7 FF 50 10 83 F8 2A 74 ? 49 8B 04 24 4C 89 E7 FF 50 10 3D D8 07 00 00";
 constexpr const char* tf_gc_client_system_request_accept_match_invite =
   "48 83 BF ? ? ? ? 00 74 ? C3 0F 1F 44 00 00 55 48 89 E5 41 57 49 89 F7 41 56 41 55 41 54 49 89 FC BF ? ? ? ? 53 48 83 EC ? E8 ? ? ? ? 49 89 C6 E8 ? ? ? ? 48 89 C7 E8 ? ? ? ? 48 8D 70 ?";
+constexpr const char* tf_gc_client_system_join_mm_match =
+  "55 48 89 E5 41 55 41 54 0F B6 87 CE 07 00 00 49 89 FC 89 C2 81 E2 F0 00 00 00 0F 84 ? ? ? ? 3C AF 0F 87 ? ? ? ? 0F B6 87 CF 07 00 00 83 E8 01 3C 03 0F 87 ? ? ? ? 80 FA 10 74 ? 80 FA 70 0F 84 ? ? ? ? 80 FA 30 75 ? 8B 87 C8 07 00 00 85 C0 0F 84";
 
 constexpr const char* load_saved_casual_criteria =
   "48 83 7F 30 00 C6 87 10 03 00 00 01 74 ? 80 7F 40 00 74 ? C6 87 30 03 00 00 01 48 8D 35 ? ? ? ? 48 81 C7 B0 01 00 00 E9 ? ? ? ?";
