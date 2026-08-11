@@ -41,6 +41,11 @@ if ! flock -n 9; then
 fi
 printf '%s\n' "$$" >&9
 
+if [ "${CAT_START_CLEANUP:-1}" != "0" ]; then
+    echo "Cleaning stale Cathook panel, bot, IPC, and display processes..."
+    CAT_PRESERVE_START_LOCK=1 "$script_dir/stop"
+fi
+
 if [ "$requested_visible_windows" = "1" ]; then
     visible_windows=1
     display="${CAT_DISPLAY:-${DISPLAY:-:0}}"
