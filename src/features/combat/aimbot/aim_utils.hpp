@@ -841,7 +841,7 @@ inline bool aimbot_sniper_scope_active(Player* localplayer) {
 }
 
 inline bool aimbot_sniper_scope_confirmed(Player* localplayer) {
-  return localplayer != nullptr && localplayer->is_scoped();
+  return aimbot_sniper_scope_active(localplayer);
 }
 
 inline void update_aimbot_scope_timing(Player* localplayer) {

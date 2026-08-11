@@ -122,7 +122,7 @@ inline decision resolve(Player* localplayer, Weapon* weapon, const aimbot_candid
     return {};
   }
 
-  if (scoped_only(localplayer, weapon)) {
+  if (scoped_only(localplayer, weapon) && !config.aimbot.sniper_auto_scope) {
     reset_auto_scope();
     return {};
   }
@@ -170,14 +170,20 @@ inline bool fire_ready(Player* localplayer, Weapon* weapon) {
     return false;
   }
 
-  if (scoped_only(localplayer, weapon) && !aimbot_sniper_scope_confirmed(localplayer)) {
+  const float now = global_vars != nullptr ? global_vars->curtime : 0.0f;
+  const bool scope_wait_timed_out = pending_scope_state == 1 &&
+    pending_scope_request_time > 0.0f &&
+    now - pending_scope_request_time >= 0.5f;
+
+  if (scoped_only(localplayer, weapon) && !aimbot_sniper_scope_confirmed(localplayer) &&
+      !scope_wait_timed_out) {
     return false;
   }
 
   if (!policy_requires_scope(localplayer, weapon)) {
     return true;
   }
-  if (!aimbot_sniper_scope_confirmed(localplayer)) {
+  if (!aimbot_sniper_scope_confirmed(localplayer) && !scope_wait_timed_out) {
     return false;
   }
 
