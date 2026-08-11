@@ -993,8 +993,7 @@ bool goal_is_objective(goal_type type)
 {
   return type == goal_type::capture_objective
     || type == goal_type::push_payload
-    || type == goal_type::defend_payload
-    || type == goal_type::return_flag;
+    || type == goal_type::defend_payload;
 }
 
 bool enemy_close_to_payload_cart(Player* localplayer)
@@ -1585,10 +1584,6 @@ goal_candidate navbot_goals::choose_flag_goal(const navbot_mesh& mesh, Player* l
       enemy_flag = flag;
     }
   }
-  const auto flag_distance_penalty = [&](const Vec3& target)
-  {
-    return std::min(std::sqrt(distance_squared_2d(localplayer->get_origin(), target)), 2500.0f) * 0.015f;
-  };
 
   const bool carrying_enemy_flag = enemy_flag != nullptr
     && enemy_flag->get_status() == flag_status::STOLEN
@@ -1603,7 +1598,7 @@ goal_candidate navbot_goals::choose_flag_goal(const navbot_mesh& mesh, Player* l
     auto own_base_area = mesh.find_closest_area(own_base_origin);
     if (own_base_area.valid())
     {
-      auto score = 170.0f - flag_distance_penalty(own_base_origin);
+      auto score = 95.0f - distance_squared_2d(localplayer->get_origin(), own_base_origin) * 0.00001f;
       choose_best(best, make_candidate(goal_type::return_flag, score, own_base_origin, own_base_area));
     }
   }
@@ -1614,7 +1609,7 @@ goal_candidate navbot_goals::choose_flag_goal(const navbot_mesh& mesh, Player* l
     auto area_id = mesh.find_closest_area(origin);
     if (area_id.valid())
     {
-      auto score = 95.0f - flag_distance_penalty(origin);
+      auto score = 60.0f - distance_squared_2d(localplayer->get_origin(), origin) * 0.00001f;
       if (enemy_flag->get_status() == flag_status::DROPPED)
       {
         score += 10.0f;
@@ -1909,7 +1904,6 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
     consider(choose_pickup_goal(mesh, localplayer, class_id::AMMO, goal_type::get_ammo, 80.0f));
     consider(choose_pickup_area_goal(mesh, localplayer, mesh.cache().ammo_areas, goal_type::get_ammo, 50.0f));
   }
-  auto best_before_objectives = best;
 
   if (goal_enabled(goal_type::get_flag) || goal_enabled(goal_type::return_flag))
   {
@@ -1924,6 +1918,7 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
     consider(flag_goal);
   }
 
+  auto best_before_objectives = best;
   if (goal_enabled(goal_type::push_payload) || goal_enabled(goal_type::defend_payload))
   {
     consider(choose_payload_goal(mesh, localplayer));
