@@ -378,17 +378,18 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
   auto draw_halo = [context, width, height](const int x, const int y) {
     context->draw_screen_space_rectangle(mat_halo, x, y, width, height, 0.0f, 0.0f, width - 1, height - 1, width, height);
   };
-  const int radius = stencil_radius(batch.settings.stencil);
-  for (int offset = 1; offset <= radius; ++offset) {
-    draw_halo(-offset, 0);
-    draw_halo(offset, 0);
-    draw_halo(0, -offset);
-    draw_halo(0, offset);
-    if (offset > 1) {
-      draw_halo(-offset, -offset);
-      draw_halo(offset, offset);
-      draw_halo(offset, -offset);
-      draw_halo(-offset, offset);
+  if (batch.settings.stencil > 0) {
+    const int side = (stencil_radius(batch.settings.stencil) + 1) / 2;
+    draw_halo(-side, 0);
+    draw_halo(side, 0);
+    draw_halo(0, -side);
+    draw_halo(0, side);
+    const int corner = stencil_radius(batch.settings.stencil) / 2;
+    if (corner > 0) {
+      draw_halo(-corner, -corner);
+      draw_halo(corner, corner);
+      draw_halo(corner, -corner);
+      draw_halo(-corner, corner);
     }
   }
   if (batch.settings.blur > 0.0f) draw_halo(0, 0);
