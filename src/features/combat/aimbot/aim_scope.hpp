@@ -122,7 +122,7 @@ inline decision resolve(Player* localplayer, Weapon* weapon, const aimbot_candid
     return {};
   }
 
-  if (scoped_only(localplayer, weapon) && !config.aimbot.sniper_auto_scope) {
+  if (scoped_only(localplayer, weapon)) {
     reset_auto_scope();
     return {};
   }
