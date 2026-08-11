@@ -191,6 +191,7 @@ inline bool aimbot_current_pose_signature_matches(const aimbot_current_pose& pos
                                                   std::uint64_t pose_parameter_hash,
                                                   float setup_time) {
   return pose.valid && pose.player == target && pose.model == model &&
+    global_vars != nullptr && pose.render_frame == global_vars->framecount &&
     pose.simulation_time == simulation_time &&
     std::memcmp(&pose.network_origin, &network_origin, sizeof(Vec3)) == 0 &&
     std::memcmp(&pose.render_origin, &render_origin, sizeof(Vec3)) == 0 &&
@@ -254,6 +255,41 @@ inline bool aimbot_invalidate_bone_cache(Player* target) {
   }
 
   invalidate_bone_cache(target);
+  return true;
+}
+
+inline bool aimbot_update_engine_bone_cache(Player* target,
+                                            const matrix_3x4* bone_to_world,
+                                            int bone_count,
+                                            float setup_time) {
+  if (target == nullptr || bone_to_world == nullptr || bone_count <= 0 ||
+      bone_count > aimbot_max_bones || !std::isfinite(setup_time)) {
+    return false;
+  }
+
+  using get_bone_cache_fn = void* (*)(std::uintptr_t);
+  using update_bone_cache_fn = void (*)(void*, const matrix_3x4*, int, float);
+  static const auto get_bone_cache = reinterpret_cast<get_bone_cache_fn>(
+    sigscan_module("client.so", sigs::studio_get_bone_cache));
+  static const auto update_bone_cache = reinterpret_cast<update_bone_cache_fn>(
+    sigscan_module("client.so", sigs::studio_bone_cache_update_bones));
+  if (get_bone_cache == nullptr || update_bone_cache == nullptr) {
+    return false;
+  }
+
+  constexpr std::uintptr_t bone_cache_handle_offset = 0xB98;
+  const std::uintptr_t handle = *reinterpret_cast<const std::uintptr_t*>(
+    reinterpret_cast<std::uintptr_t>(target) + bone_cache_handle_offset);
+  if (handle == 0) {
+    return false;
+  }
+
+  void* cache = get_bone_cache(handle);
+  if (cache == nullptr) {
+    return false;
+  }
+
+  update_bone_cache(cache, bone_to_world, bone_count, setup_time);
   return true;
 }
 
@@ -567,6 +603,15 @@ inline bool aimbot_setup_bones_at_time(Player* target,
 
   if (target->setup_bones(bone_to_world, setup_bone_count, bone_used_by_hitbox, setup_time)) {
     if (aimbot_bones_are_finite(bone_to_world, setup_bone_count)) {
+      if (nographics::should_skip_rendering_hooks()) {
+        const float cache_time = global_vars != nullptr && std::isfinite(global_vars->curtime)
+          ? global_vars->curtime
+          : setup_time;
+        if (!aimbot_update_engine_bone_cache(target, bone_to_world, setup_bone_count, cache_time)) {
+          aimbot_bone_failure = aimbot_reject_reason::bone_cache;
+          return false;
+        }
+      }
       if (bone_count_out != nullptr) {
         *bone_count_out = setup_bone_count;
       }
@@ -682,6 +727,42 @@ inline void aimbot_clear_network_pose(Player* target) {
   }
 }
 
+inline bool aimbot_copy_network_pose_bones(Player* target,
+                                           matrix_3x4* bone_to_world,
+                                           int* bone_count_out = nullptr) {
+  if (bone_count_out != nullptr) {
+    *bone_count_out = 0;
+  }
+  if (target == nullptr || bone_to_world == nullptr) {
+    return false;
+  }
+
+  const int index = target->get_index();
+  if (index <= 0 || index >= static_cast<int>(aimbot_current_poses.size())) {
+    return false;
+  }
+
+  const aimbot_current_pose& pose = aimbot_current_poses[static_cast<std::size_t>(index)];
+  if (!pose.valid || pose.player != target || pose.bone_count <= 0 ||
+      pose.bone_count > aimbot_max_bones || target->is_dormant() || !target->is_alive()) {
+    return false;
+  }
+
+  std::memcpy(bone_to_world, pose.bones.data(),
+    sizeof(matrix_3x4) * static_cast<std::size_t>(pose.bone_count));
+  if (!aimbot_bones_are_finite(bone_to_world, pose.bone_count)) {
+    if (bone_count_out != nullptr) {
+      *bone_count_out = 0;
+    }
+    return false;
+  }
+
+  if (bone_count_out != nullptr) {
+    *bone_count_out = pose.bone_count;
+  }
+  return true;
+}
+
 inline int aimbot_current_pose_generation(Player* target) {
   if (target == nullptr) {
     return 0;
@@ -698,6 +779,13 @@ inline bool aimbot_get_bones(Player* target, matrix_3x4* bone_to_world, int* bon
   if (target == nullptr || bone_to_world == nullptr) {
     aimbot_bone_failure = aimbot_reject_reason::invalid;
     return false;
+  }
+
+  if (nographics::should_skip_rendering_hooks()) {
+    aimbot_capture_latest_network_pose(target, false);
+    const bool copied = aimbot_copy_network_pose_bones(target, bone_to_world, bone_count_out);
+    aimbot_bone_failure = copied ? aimbot_reject_reason::none : aimbot_reject_reason::bone_reconstruction;
+    return copied;
   }
 
   const bool copied = aimbot_copy_cached_bones(target, bone_to_world, bone_count_out);

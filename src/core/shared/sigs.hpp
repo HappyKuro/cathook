@@ -81,6 +81,10 @@ constexpr const char* ctf_player_anim_state_store =
 
 constexpr const char* base_animating_invalidate_bone_cache =
   "48 8B 05 ? ? ? ? C7 87 A0 0B 00 00 FF FF 7F FF 48 83 E8 01 48 89 87 20 08 00 00 C3";
+constexpr const char* studio_get_bone_cache =
+  "55 48 8D 0D ? ? ? ? 48 89 E5 41 56 41 55 4C 8D 35 ? ? ? ? 49 89 FD 41 54 4C 8D 25 ? ? ? ? 66 49 0F 6E CE 53 66 49 0F 6E C4 48 83 EC 30 48 8B 1D ? ? ? ? 66 0F 6C C1 48 89 4D C0 0F 29 45 B0 C7 45 C8 DC 00 00 00";
+constexpr const char* studio_bone_cache_update_bones =
+  "55 48 89 E5 41 57 41 56 41 55 41 54 53 48 89 FB 48 83 EC 18 44 0F B7 7F 0E F3 0F 11 45 CC 0F B7 47 10";
 constexpr const char* base_animating_auto_allow_bone_access =
   "44 0F B6 C2 40 0F B6 FE BA 01 00 00 00 44 89 C6 E9 ? ? ? ?";
 constexpr const char* base_animating_auto_allow_bone_access_on_delete =
