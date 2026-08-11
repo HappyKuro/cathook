@@ -11,6 +11,7 @@ V  o o  V  file: src/features/automation/navbot/navbot_types.hpp
 #ifndef NAVBOT_TYPES_HPP
 #define NAVBOT_TYPES_HPP
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -182,6 +183,13 @@ constexpr uint32_t goal_type_bit(goal_type type)
   return 1u << static_cast<uint32_t>(type);
 }
 
+constexpr size_t goal_type_count = static_cast<size_t>(goal_type::followbot) + 1;
+
+constexpr size_t goal_type_index(goal_type type)
+{
+  return static_cast<size_t>(type);
+}
+
 constexpr bool goal_type_can_be_excluded(goal_type type)
 {
   return type != goal_type::roam;
@@ -234,6 +242,12 @@ struct job_handle
   uint32_t generation_id = 0;
 };
 
+struct navbot_job_availability
+{
+  bool enabled = false;
+  bool candidate_available = false;
+};
+
 struct navbot_debug_state
 {
   goal_type current_goal = goal_type::roam;
@@ -253,6 +267,7 @@ struct navbot_debug_state
   bool has_active_path = false;
   bool setup_finished = false;
   uint32_t active_crumb_count = 0;
+  std::array<navbot_job_availability, goal_type_count> job_availability{};
   std::string map_name{};
   std::string runtime_state{};
   std::string nav_file_path{};

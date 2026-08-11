@@ -140,11 +140,45 @@ void navbot_hazards::add_edge_hazard(const hazard_record& record)
 
 void navbot_hazards::add_transition_failure(nav_edge_id edge_id, float current_time, float duration)
 {
+  if (duration <= 0.0f || !hazard_nav_edge_valid(edge_id))
+  {
+    return;
+  }
+
+  const auto expire_time = current_time + duration;
+  auto changed_record = false;
+  for (auto& record : records_)
+  {
+    if (record.kind != hazard_kind::transition_failure
+      || !hazard_same_nav_edge(record.edge_id, edge_id)
+      || hazard_expired(record, current_time))
+    {
+      continue;
+    }
+
+    if (record.policy != hazard_policy::temporary_forbid)
+    {
+      record.policy = hazard_policy::temporary_forbid;
+      changed_record = true;
+    }
+    if (record.expire_time < expire_time)
+    {
+      record.expire_time = expire_time;
+      changed_record = true;
+    }
+
+    if (changed_record)
+    {
+      ++generation_;
+    }
+    return;
+  }
+
   hazard_record record{};
   record.kind = hazard_kind::transition_failure;
   record.policy = hazard_policy::temporary_forbid;
   record.edge_id = edge_id;
-  record.expire_time = current_time + duration;
+  record.expire_time = expire_time;
   add_edge_hazard(record);
 }
 

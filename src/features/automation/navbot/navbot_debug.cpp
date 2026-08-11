@@ -12,6 +12,7 @@ V  o o  V  file: src/features/automation/navbot/navbot_debug.cpp
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <utility>
 #include <vector>
 #include "imgui/imgui.h"
 #include "features/visuals/overlay_projection.hpp"
@@ -32,6 +33,8 @@ const char* goal_type_name(goal_type type)
       return "get_ammo";
     case goal_type::capture_objective:
       return "capture_objective";
+    case goal_type::escape_danger:
+      return "escape_danger";
     case goal_type::push_payload:
       return "push_payload";
     case goal_type::defend_payload:
@@ -40,8 +43,6 @@ const char* goal_type_name(goal_type type)
       return "get_flag";
     case goal_type::return_flag:
       return "return_flag";
-    case goal_type::escape_danger:
-      return "escape_danger";
     case goal_type::hold_range_on_enemy:
       return "hold_range_on_enemy";
     case goal_type::melee_chase:
@@ -194,7 +195,7 @@ void draw_debug_overlay_imgui(ImDrawList* draw_list, const navbot_debug_state& d
   }
 
   auto lines = std::vector<std::string>{};
-  lines.reserve(21);
+  lines.reserve(30);
   lines.emplace_back("navbot");
   lines.emplace_back(std::string("state: ") + debug_state.runtime_state);
   lines.emplace_back(std::string("map: ") + debug_state.map_name);
@@ -212,6 +213,20 @@ void draw_debug_overlay_imgui(ImDrawList* draw_list, const navbot_debug_state& d
   lines.emplace_back(std::string("active_path: ") + (debug_state.has_active_path ? "yes" : "no"));
   lines.emplace_back(std::string("crumbs: ") + std::to_string(debug_state.active_crumb_count));
   lines.emplace_back(std::string("last_fail: ") + failure_reason_name(debug_state.last_failure));
+  lines.emplace_back("jobs: +=doable -=unavailable x=disabled");
+  auto job_line = std::string("jobs:");
+  for (size_t index = 0; index < goal_type_count; ++index)
+  {
+    const auto& job = debug_state.job_availability[index];
+    const auto status = !job.enabled ? 'x' : job.candidate_available ? '+' : '-';
+    job_line += " " + std::string(goal_type_name(static_cast<goal_type>(index))) + ":" + status;
+    if (job_line.size() >= 92 && index + 1 < goal_type_count)
+    {
+      lines.emplace_back(std::move(job_line));
+      job_line = "     ";
+    }
+  }
+  lines.emplace_back(std::move(job_line));
   lines.emplace_back(std::string("cp: ") + std::to_string(debug_state.captured_point_index) +
                      " setup: " + (debug_state.setup_finished ? "done" : "active") +
                      " mini: " + std::to_string(debug_state.mini_round_mask));

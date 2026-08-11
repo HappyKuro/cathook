@@ -43,6 +43,7 @@ navbot_controller* global_controller = nullptr;
 constexpr float goal_refresh_interval = 1.0f;
 constexpr float goal_retry_interval = 0.2f;
 constexpr float path_retry_interval = 1.0f;
+constexpr float transition_failure_retry_seconds = 5.0f;
 constexpr float path_job_timeout = 5.0f;
 constexpr float weapon_switch_interval = 0.35f;
 constexpr float navbot_throwable_look_suppress_seconds = 0.55f;
@@ -924,6 +925,7 @@ void reset_debug_runtime(navbot_debug_state& debug_state)
   debug_state.current_path_status = path_status::failed;
   debug_state.last_failure = follower_failure_reason::none;
   debug_state.pending_generation_id = 0;
+  debug_state.job_availability = {};
   debug_state.runtime_state = "idle";
 }
 
@@ -1329,7 +1331,8 @@ void navbot_controller::refresh_goal(Player* localplayer, float current_time)
   auto next_goal = goals_.select_goal(mesh_, localplayer, current_time, mvm_wave_started_);
   Vec3 follow_destination{};
   int follow_entity_index = 0;
-  if (followbot::controller().get_nav_target(&follow_destination, &follow_entity_index))
+  if (!goal_is_disabled(goal_type::followbot)
+    && followbot::controller().get_nav_target(&follow_destination, &follow_entity_index))
   {
     auto follow_goal = goal_candidate{
       goal_type::followbot,
@@ -1372,6 +1375,27 @@ void navbot_controller::update_runtime_debug()
   debug_state_.captured_point_index = current_captured_point_index();
   debug_state_.mini_round_mask = current_mini_round_mask();
   debug_state_.setup_finished = setup_finished_;
+  debug_state_.job_availability = goals_.job_availability();
+
+  auto& follow_availability = debug_state_.job_availability[goal_type_index(goal_type::followbot)];
+  follow_availability.enabled = !goal_is_disabled(goal_type::followbot);
+  Vec3 follow_destination{};
+  int follow_entity_index = 0;
+  if (follow_availability.enabled
+    && followbot::controller().get_nav_target(&follow_destination, &follow_entity_index))
+  {
+    const auto follow_area = mesh_.find_closest_area(follow_destination);
+    const auto follow_goal = goal_candidate{
+      goal_type::followbot,
+      std::numeric_limits<float>::max(),
+      follow_destination,
+      follow_area,
+      follow_entity_index,
+      false
+    };
+    follow_availability.candidate_available = follow_area.valid()
+      && !goals_.is_goal_rejected(follow_goal, global_vars != nullptr ? global_vars->curtime : 0.0f);
+  }
 
 }
 
@@ -1658,12 +1682,16 @@ void navbot_controller::on_create_move(user_cmd* user_cmd)
   if (follow_result.failed)
   {
     const auto blacklisted_crumb = record_crumb_failure(follow_result, current_time);
-    if (follow_result.failure_reason == follower_failure_reason::hazard_intersection
-      && !blacklisted_crumb
-      && !hazards_.has_active_world_hazard(current_time))
+    const auto transition_failed = (follow_result.failure_reason == follower_failure_reason::hazard_intersection
+      || follow_result.failure_reason == follower_failure_reason::blocked
+      || follow_result.failure_reason == follower_failure_reason::no_progress)
+      && nav_edge_valid(follow_result.failed_edge);
+    if (transition_failed)
     {
-      debug_state_.last_failure = follower_failure_reason::none;
-      return;
+      hazards_.add_transition_failure(
+        follow_result.failed_edge,
+        current_time,
+        transition_failure_retry_seconds);
     }
 
     debug_state_.last_failure = follow_result.failure_reason;

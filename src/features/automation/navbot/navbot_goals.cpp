@@ -36,6 +36,7 @@ namespace
 
 goal_candidate make_candidate(goal_type type, float score, const Vec3& destination, nav_area_id destination_area);
 goal_candidate make_entity_candidate(goal_type type, float score, const Vec3& destination, nav_area_id destination_area, int entity_index);
+bool goal_enabled(goal_type type);
 void choose_best(goal_candidate& best, const goal_candidate& candidate);
 
 const std::vector<goal_rejection>* active_rejections = nullptr;
@@ -380,7 +381,10 @@ goal_candidate make_entity_candidate(goal_type type, float score, const Vec3& de
 
 void choose_best(goal_candidate& best, const goal_candidate& candidate)
 {
-  if (!candidate.destination_area.valid() || candidate.rejected || candidate_is_rejected(candidate))
+  if (!candidate.destination_area.valid()
+    || !goal_enabled(candidate.type)
+    || candidate.rejected
+    || candidate_is_rejected(candidate))
   {
     return;
   }
@@ -1625,6 +1629,14 @@ goal_candidate navbot_goals::choose_roam_goal(const navbot_mesh& mesh, Player* l
   goal_candidate best{};
   best.score = -1.0f;
 
+  auto clear_roam_rejections = [this]()
+  {
+    rejected_goals_.erase(std::remove_if(rejected_goals_.begin(), rejected_goals_.end(), [](const goal_rejection& rejection)
+    {
+      return rejection.type == goal_type::roam;
+    }), rejected_goals_.end());
+  };
+
   auto local_area_id = mesh.find_closest_area(localplayer->get_origin());
   auto local_area = mesh.find_area(local_area_id);
   if (local_area == nullptr)
@@ -1755,6 +1767,11 @@ goal_candidate navbot_goals::choose_roam_goal(const navbot_mesh& mesh, Player* l
   if (candidate_ids.empty())
   {
     best = make_candidate(goal_type::roam, 1.0f, local_area->center, local_area->id);
+    if (best.rejected)
+    {
+      clear_roam_rejections();
+      best = make_candidate(goal_type::roam, 1.0f, local_area->center, local_area->id);
+    }
     last_roam_area_ = best.destination_area;
     next_roam_refresh_time_ = current_time + 2.0f;
     return best;
@@ -1773,11 +1790,27 @@ goal_candidate navbot_goals::choose_roam_goal(const navbot_mesh& mesh, Player* l
       > roam_area_score(*right_area, localplayer->get_origin(), prefer_spawn_exit);
   });
 
-  auto candidate_limit = std::min<size_t>(candidate_ids.size(), 4);
+  auto available_candidate_ids = std::vector<nav_area_id>{};
+  available_candidate_ids.reserve(candidate_ids.size());
+  for (auto area_id : candidate_ids)
+  {
+    if (!make_roam_candidate(mesh, localplayer, area_id, prefer_spawn_exit).rejected)
+    {
+      available_candidate_ids.emplace_back(area_id);
+    }
+  }
+
+  if (available_candidate_ids.empty())
+  {
+    clear_roam_rejections();
+    available_candidate_ids = candidate_ids;
+  }
+
+  auto candidate_limit = std::min<size_t>(available_candidate_ids.size(), 4);
   auto selected_index = roam_cursor_ % candidate_limit;
   ++roam_cursor_;
 
-  best = make_roam_candidate(mesh, localplayer, candidate_ids[selected_index], prefer_spawn_exit);
+  best = make_roam_candidate(mesh, localplayer, available_candidate_ids[selected_index], prefer_spawn_exit);
   last_roam_area_ = best.destination_area;
   next_roam_refresh_time_ = current_time + 2.0f;
   return best;
@@ -1793,7 +1826,10 @@ goal_candidate navbot_goals::choose_mvm_goal(const navbot_mesh& mesh, Player* lo
   }
 
   auto take_if_valid = [&best](goal_candidate candidate) {
-    if (!candidate.destination_area.valid() || candidate.rejected || candidate_is_rejected(candidate))
+    if (!candidate.destination_area.valid()
+      || !goal_enabled(candidate.type)
+      || candidate.rejected
+      || candidate_is_rejected(candidate))
     {
       return false;
     }
@@ -1847,9 +1883,36 @@ goal_candidate navbot_goals::choose_mvm_goal(const navbot_mesh& mesh, Player* lo
   return choose_mvm_frontline_goal(mesh, localplayer);
 }
 
+void navbot_goals::reset_job_availability()
+{
+  for (size_t index = 0; index < goal_type_count; ++index)
+  {
+    const auto type = static_cast<goal_type>(index);
+    job_availability_[index] = navbot_job_availability{
+      goal_enabled(type),
+      false
+    };
+  }
+}
+
+bool navbot_goals::note_job_candidate(const goal_candidate& candidate)
+{
+  if (!candidate.destination_area.valid()
+    || !goal_enabled(candidate.type)
+    || candidate.rejected
+    || candidate_is_rejected(candidate))
+  {
+    return false;
+  }
+
+  job_availability_[goal_type_index(candidate.type)].candidate_available = true;
+  return true;
+}
+
 navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* localplayer, float current_time, bool mvm_wave_started)
 {
   navbot_goal_state state{};
+  reset_job_availability();
   if (!mesh.is_ready() || localplayer == nullptr)
   {
     return state;
@@ -1868,6 +1931,14 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
     }
   } scope(rejected_goals_);
 
+  goal_candidate best{};
+  best.score = -1.0f;
+  auto consider = [this, &best](goal_candidate candidate)
+  {
+    note_job_candidate(candidate);
+    choose_best(best, candidate);
+  };
+
   rejected_goals_.erase(std::remove_if(rejected_goals_.begin(), rejected_goals_.end(), [current_time](const goal_rejection& rejection)
   {
     return rejection.expire_time > 0.0f && rejection.expire_time <= current_time;
@@ -1883,7 +1954,7 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
   if (mvm_mode_enabled(mesh))
   {
     auto mvm_goal = choose_mvm_goal(mesh, localplayer, mvm_wave_started);
-    if (mvm_goal.destination_area.valid())
+    if (note_job_candidate(mvm_goal))
     {
       state.valid = true;
       state.score = mvm_goal.score;
@@ -1895,7 +1966,7 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
   if (mvm_map_active(mesh) && config.misc.automation.mvm_buybot)
   {
     const auto station_goal = choose_mvm_upgrade_station_goal(mesh, localplayer);
-    if (station_goal.destination_area.valid())
+    if (note_job_candidate(station_goal))
     {
       state.valid = true;
       state.score = station_goal.score;
@@ -1904,9 +1975,6 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
     }
   }
 
-  goal_candidate best{};
-  best.score = -1.0f;
-
   auto max_health = localplayer->get_max_health();
   auto health_ratio = max_health > 0 ? static_cast<float>(localplayer->get_health()) / static_cast<float>(max_health) : 1.0f;
 
@@ -1914,40 +1982,40 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
   {
     if (goal_enabled(goal_type::get_health))
     {
-      choose_best(best, choose_pickup_goal(mesh, localplayer, class_id::HEALTH_PACK, goal_type::get_health, 100.0f));
-      choose_best(best, choose_pickup_area_goal(mesh, localplayer, mesh.cache().health_areas, goal_type::get_health, 60.0f));
+      consider(choose_pickup_goal(mesh, localplayer, class_id::HEALTH_PACK, goal_type::get_health, 100.0f));
+      consider(choose_pickup_area_goal(mesh, localplayer, mesh.cache().health_areas, goal_type::get_health, 60.0f));
     }
   }
 
   if (weapon_needs_reload(localplayer) && goal_enabled(goal_type::reload_weapons))
   {
-    choose_best(best, choose_reload_weapons_goal(mesh, localplayer));
+    consider(choose_reload_weapons_goal(mesh, localplayer));
   }
 
   if (goal_primary_weapon_needs_ammo(localplayer) && goal_enabled(goal_type::get_ammo))
   {
-    choose_best(best, choose_pickup_goal(mesh, localplayer, class_id::AMMO, goal_type::get_ammo, 80.0f));
-    choose_best(best, choose_pickup_area_goal(mesh, localplayer, mesh.cache().ammo_areas, goal_type::get_ammo, 50.0f));
+    consider(choose_pickup_goal(mesh, localplayer, class_id::AMMO, goal_type::get_ammo, 80.0f));
+    consider(choose_pickup_area_goal(mesh, localplayer, mesh.cache().ammo_areas, goal_type::get_ammo, 50.0f));
   }
 
   if (goal_enabled(goal_type::get_flag) || goal_enabled(goal_type::return_flag))
   {
-    choose_best(best, choose_flag_goal(mesh, localplayer));
+    consider(choose_flag_goal(mesh, localplayer));
   }
 
   auto best_before_objectives = best;
   if (goal_enabled(goal_type::push_payload) || goal_enabled(goal_type::defend_payload))
   {
-    choose_best(best, choose_payload_goal(mesh, localplayer));
+    consider(choose_payload_goal(mesh, localplayer));
   }
   if (goal_enabled(goal_type::capture_objective) && !map_is_payload(mesh.map_name()))
   {
-    choose_best(best, choose_control_point_goal(mesh, localplayer));
+    consider(choose_control_point_goal(mesh, localplayer));
   }
 
   if (goal_enabled(goal_type::heal_follow))
   {
-    choose_best(best, choose_heal_follow_goal(mesh, localplayer));
+    consider(choose_heal_follow_goal(mesh, localplayer));
   }
 
   auto have_priority_objective = goal_is_objective(best.type) && best.score > best_before_objectives.score;
@@ -1956,12 +2024,12 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
   const bool seeking_ammo = best.destination_area.valid() && best.type == goal_type::get_ammo;
   if (goal_enabled(goal_type::hold_range_on_enemy) && allow_enemy_override && !seeking_ammo)
   {
-    choose_best(best, choose_enemy_goal(mesh, localplayer, current_time));
+    consider(choose_enemy_goal(mesh, localplayer, current_time));
   }
 
   if (!best.destination_area.valid())
   {
-    choose_best(best, choose_roam_goal(mesh, localplayer, current_time));
+    consider(choose_roam_goal(mesh, localplayer, current_time));
   }
 
   if (best.destination_area.valid())
@@ -1977,6 +2045,7 @@ navbot_goal_state navbot_goals::select_goal(const navbot_mesh& mesh, Player* loc
 navbot_goal_state navbot_goals::select_roam_goal(const navbot_mesh& mesh, Player* localplayer, float current_time)
 {
   navbot_goal_state state{};
+  reset_job_availability();
   if (!mesh.is_ready() || localplayer == nullptr)
   {
     return state;
@@ -2001,7 +2070,7 @@ navbot_goal_state navbot_goals::select_roam_goal(const navbot_mesh& mesh, Player
   }), rejected_goals_.end());
 
   auto candidate = choose_roam_goal(mesh, localplayer, current_time);
-  if (candidate.destination_area.valid())
+  if (note_job_candidate(candidate))
   {
     state.valid = true;
     state.score = candidate.score;
@@ -2009,6 +2078,11 @@ navbot_goal_state navbot_goals::select_roam_goal(const navbot_mesh& mesh, Player
   }
 
   return state;
+}
+
+const std::array<navbot_job_availability, goal_type_count>& navbot_goals::job_availability() const
+{
+  return job_availability_;
 }
 
 void navbot_goals::reject_goal(const goal_candidate& goal, float current_time)
