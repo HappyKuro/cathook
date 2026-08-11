@@ -281,7 +281,10 @@ struct hitscan_fire_solution {
   int pellet_index = -1;
   int trace_hitbox = -1;
   int trace_entity_index = -1;
+  int trace_contents = 0;
   float spread = 0.0f;
+  float trace_fraction = 1.0f;
+  Vec3 trace_end{};
   Vec3 command_angles{};
 };
 
@@ -368,6 +371,9 @@ inline hitscan_fire_solution prepare_hitscan_fire_solution(Player* localplayer,
 
     hitscan_aim_trace_result trace_result{};
     if (!hitscan_aim_trace_candidate(localplayer, weapon, candidate, trace_angles, spread_offset, use_spread, &trace_result)) {
+      solution.trace_contents = trace_result.contents;
+      solution.trace_fraction = trace_result.fraction;
+      solution.trace_end = trace_result.end;
       if (hitscan_aim_same_entity(trace_result.entity, candidate.entity) &&
           candidate.hitbox >= 0 &&
           trace_result.hitbox >= 0 &&
@@ -385,6 +391,9 @@ inline hitscan_fire_solution prepare_hitscan_fire_solution(Player* localplayer,
     solution.pellet_index = use_spread ? pellet_index : -1;
     solution.trace_hitbox = trace_result.hitbox;
     solution.trace_entity_index = trace_result.entity != nullptr ? trace_result.entity->get_index() : -1;
+    solution.trace_contents = trace_result.contents;
+    solution.trace_fraction = trace_result.fraction;
+    solution.trace_end = trace_result.end;
     return solution;
   }
 

@@ -8,6 +8,7 @@ panel_dir="$script_dir/catbot-ipc-web-panel-main"
 instances_dir="$script_dir/user_instances"
 if [ -n "${CATHOOK_ROOT-}" ]; then install_root="$CATHOOK_ROOT"; else install_root="/opt/cathook"; fi
 ipc_bin="$install_root/ipc/bin"
+ipc_state_path="$install_root/ipc/cathook_followbot_server"
 if [ -n "${CAT_DEFAULT_DISPLAY-}" ]; then default_headless_display="$CAT_DEFAULT_DISPLAY"; else default_headless_display=":699"; fi
 if [ -n "${CAT_XVFB_PID_FILE-}" ]; then xvfb_pid_file="$CAT_XVFB_PID_FILE"; else xvfb_pid_file="/tmp/cat-catbot-xvfb.pid"; fi
 if [ -n "${CAT_CHUNKED_X_DISPLAY_PID_DIR-}" ]; then xvfb_pool_pid_dir="$CAT_CHUNKED_X_DISPLAY_PID_DIR"; else xvfb_pool_pid_dir="/tmp/cat-catbot-xvfb-pool"; fi
@@ -46,9 +47,9 @@ if [ -f /tmp/pulsemodule.id ] && command -v pactl >/dev/null 2>&1; then
     pactl unload-module "$(cat /tmp/pulsemodule.id 2>/dev/null)" 2>/dev/null || true
 fi
 
-as_root env PANEL_DIR="$panel_dir" INSTANCES_DIR="$instances_dir" IPC_BIN="$ipc_bin" \
+as_root env PANEL_DIR="$panel_dir" INSTANCES_DIR="$instances_dir" IPC_BIN="$ipc_bin" IPC_STATE_PATH="$ipc_state_path" \
     XVFB_PID_FILE="$xvfb_pid_file" XVFB_POOL_PID_DIR="$xvfb_pool_pid_dir" \
-    PRESERVE_START_LOCK="${CAT_PRESERVE_START_LOCK-0}" bash -s <<'ROOT_STOP_SCRIPT'
+    PRESERVE_START_LOCK="${CAT_PRESERVE_START_LOCK-0}" START_PID="${CAT_START_PID-}" bash -s <<'ROOT_STOP_SCRIPT'
 set -u
 kill_pids=()
 bot_roots=()
@@ -103,6 +104,24 @@ is_bot_process() {
     esac
 }
 
+is_start_process() {
+    local pid="$1"
+    local cwd="$2"
+    local cmd="$3"
+    [ -n "${START_PID-}" ] && [ "$pid" = "$START_PID" ] && return 1
+    if [[ "$cmd" == bash\ ./start* || "$cmd" == /bin/bash\ ./start* ]]; then
+        return 0
+    fi
+    case "$cwd" in
+        */botpanel)
+            [[ "$cmd" == bash\ ./start* || "$cmd" == /bin/bash\ ./start* ]]
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 for proc in /proc/[0-9]*; do
     pid="${proc##*/}"
     [ -r "$proc/cmdline" ] || continue
@@ -112,6 +131,7 @@ for proc in /proc/[0-9]*; do
         add_pid "$pid"
         panel_roots+=("$pid")
     fi
+    is_start_process "$pid" "$cwd" "$cmd" && add_pid "$pid"
     is_ipc_process "$cmd" && add_pid "$pid"
     is_bot_process "$cmd" && bot_roots+=("$pid")
 done
@@ -145,7 +165,8 @@ for pid in "${kill_pids[@]}"; do kill -KILL "$pid" 2>/dev/null || true; done
 
 rm -f /tmp/ncat-cathook-webpanel.pid /tmp/cat-ipc-server.pid /tmp/cat-ipc-server.log \
     /tmp/cat-catbot-xvfb.pid /tmp/pulsemodule.id \
-    "$XVFB_POOL_PID_DIR"/*.pid /tmp/source_engine*.lock 2>/dev/null || true
+    "$XVFB_POOL_PID_DIR"/*.pid /tmp/source_engine*.lock "$IPC_STATE_PATH" \
+    /dev/shm/cathook_followbot_server 2>/dev/null || true
 [ "${PRESERVE_START_LOCK-0}" = "1" ] || rm -f /tmp/catbot-panel-start.lock 2>/dev/null || true
 
 leftovers=0
@@ -156,6 +177,10 @@ for proc in /proc/[0-9]*; do
     cwd="$(proc_cwd "$pid")"
     if is_panel_process "$cwd" "$cmd"; then
         echo "still running panel process: $pid $cmd" >&2
+        leftovers=1
+    fi
+    if is_start_process "$pid" "$cwd" "$cmd"; then
+        echo "still running start process: $pid $cmd" >&2
         leftovers=1
     fi
     if is_bot_process "$cmd" || is_ipc_process "$cmd"; then

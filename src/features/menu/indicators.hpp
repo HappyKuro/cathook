@@ -213,14 +213,19 @@ inline auto build_aimbot_debug_rows() -> owned_indicator_rows
   const aimbot_debug_state& state = aimbot_debug_get_state();
   const bool active = state.attack_ready;
   owned_indicator_rows result{};
-  result.rows.reserve(16);
+  result.rows.reserve(30);
   const auto add = [&](const char* label, std::string value) {
     result.values.push_back(std::move(value));
     result.rows.push_back({ label, "", result.values.back(), active });
   };
   add("reason", aimbot_debug_reason_name(state.reason));
-  add("target", std::to_string(state.selected_entity_index) + " hb " + std::to_string(state.selected_hitbox));
+  add("target", std::to_string(state.selected_entity_index) + " hb " + std::to_string(state.selected_hitbox) + " hp " + std::to_string(state.selected_health));
+  add("target id", "team " + std::to_string(state.selected_team) + " ref " + std::to_string(state.selected_handle) + (state.selected_backtrack ? " bt" : " cur"));
+  add("aim point", format_float(state.selected_aim_position.x, "%.0f") + "," + format_float(state.selected_aim_position.y, "%.0f") + "," + format_float(state.selected_aim_position.z, "%.0f"));
+  add("target sim", format_float(state.selected_simulation_time, "%.3f"));
   add("trace", std::to_string(state.trace_entity_index) + " hb " + std::to_string(state.trace_hitbox));
+  add("final trace", std::string(bool_text(state.final_trace_hit)) + " fr " + format_float(state.final_trace_fraction, "%.3f") + " ent " + std::to_string(state.trace_entity_index) + " hb " + std::to_string(state.trace_hitbox) + " c " + std::to_string(state.final_trace_contents));
+  add("trace end", format_float(state.final_trace_end.x, "%.0f") + "," + format_float(state.final_trace_end.y, "%.0f") + "," + format_float(state.final_trace_end.z, "%.0f"));
   add("candidates", std::to_string(state.candidates_visible) + "/" + std::to_string(state.candidates_total) + " reject " + std::to_string(state.candidates_rejected));
   add("last reject", format_reject_summary(state.last_reject));
   add("last detail", format_reject_detail(state.last_reject));
@@ -237,6 +242,14 @@ inline auto build_aimbot_debug_rows() -> owned_indicator_rows
   add("pellet", std::to_string(state.pellet_index) + " / " + std::to_string(state.pellet_count));
   add("tick/fov", std::to_string(state.tick_count) + " / " + format_float(state.fov, "%.2f"));
   add("bt err/gap", format_float(state.backtrack_timing_error * 1000.0f, "%.0f") + " / " + format_float(state.backtrack_capture_gap * 1000.0f, "%.0f") + " ms");
+  add("pose", "i" + std::to_string(state.pose.target_index) + " " + bool_text(state.pose.valid) + " b" + std::to_string(state.pose.bone_count) + " g" + std::to_string(state.pose.generation) + " fail " + aimbot_debug_reject_reason_name(state.pose.failure));
+  add("pose frame", std::to_string(state.pose.pose_frame) + " / " + std::to_string(state.pose.current_frame) + (state.pose.signature_reused ? " reuse" : " new"));
+  add("pose time", format_float(state.pose.simulation_time, "%.3f") + " / " + format_float(state.pose.setup_time, "%.3f") + " / " + format_float(state.pose.cache_time, "%.3f"));
+  add("pose age", format_float(state.pose.simulation_age * 1000.0f, "%.1f") + " ms");
+  add("bone cache", std::string(bool_text(state.pose.getter_ready)) + " / " + bool_text(state.pose.updater_ready) + " / " + bool_text(state.pose.cache_updated) + " h " + std::to_string(static_cast<unsigned long long>(state.pose.cache_handle)));
+  add("net out/in", format_float(state.outgoing_latency * 1000.0f, "%.1f") + " / " + format_float(state.incoming_latency * 1000.0f, "%.1f") + " ms");
+  add("interp/lerp", format_float(state.interpolation * 1000.0f, "%.1f") + " / " + format_float(state.fake_interpolation * 1000.0f, "%.1f") + " ms " + std::to_string(state.lerp_ticks) + "t");
+  add("correct", format_float(state.timing_correct * 1000.0f, "%.1f") + " ms");
   return result;
 }
 

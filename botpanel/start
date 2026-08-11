@@ -43,7 +43,7 @@ printf '%s\n' "$$" >&9
 
 if [ "${CAT_START_CLEANUP:-1}" != "0" ]; then
     echo "Cleaning stale Cathook panel, bot, IPC, and display processes..."
-    CAT_PRESERVE_START_LOCK=1 "$script_dir/stop"
+    CAT_PRESERVE_START_LOCK=1 CAT_START_PID="$$" "$script_dir/stop"
 fi
 
 if [ "$requested_visible_windows" = "1" ]; then
@@ -1121,8 +1121,8 @@ start_ipc_server() {
     sleep 1
     pkill -KILL -f "$install_root/ipc/bin/server -s" 2>/dev/null || true
 
-    rm -f /tmp/cat-ipc-server.pid /tmp/cat-ipc-server.log 2>/dev/null || true
-    rm -f /dev/shm/cathook_followbot_server 2>/dev/null || true
+    rm -f /tmp/cat-ipc-server.pid /tmp/cat-ipc-server.log \
+        "$install_root/ipc/cathook_followbot_server" /dev/shm/cathook_followbot_server 2>/dev/null || true
 
     if [ -f "$repo_root/Makefile" ] && {
         [ ! -x "$ipc_server_root/bin/server" ] ||
@@ -1140,14 +1140,18 @@ start_ipc_server() {
         exit 1
     fi
 
-    "$install_root/ipc/bin/server" -s --reset >/tmp/cat-ipc-server.log 2>&1 9>&- &
+    if command -v setsid >/dev/null 2>&1; then
+        nohup setsid "$install_root/ipc/bin/server" -s --reset >/tmp/cat-ipc-server.log 2>&1 </dev/null 9>&- &
+    else
+        nohup "$install_root/ipc/bin/server" -s --reset >/tmp/cat-ipc-server.log 2>&1 </dev/null 9>&- &
+    fi
     ipc_server_pid=$!
     echo "$ipc_server_pid" >/tmp/cat-ipc-server.pid
     disown "$ipc_server_pid" 2>/dev/null || true
 
     for _ in 1 2 3 4 5; do
         if ps -p "$ipc_server_pid" >/dev/null 2>&1; then
-            chmod 0666 /dev/shm/cathook_followbot_server 2>/dev/null || true
+            chmod 0666 "$install_root/ipc/cathook_followbot_server" 2>/dev/null || true
             return
         fi
         sleep 1

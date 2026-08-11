@@ -111,12 +111,14 @@ struct aimbot_current_pose {
   float render_realtime = 0.0f;
   float setup_time = NAN;
   bool valid = false;
+  aimbot_pose_debug_info debug{};
   std::array<matrix_3x4, aimbot_max_bones> bones{};
 };
 
 inline std::array<aimbot_current_pose, 65> aimbot_current_poses{};
 inline int aimbot_pose_generation = 0;
 inline float aimbot_last_render_setup_time = NAN;
+inline aimbot_pose_debug_info aimbot_bone_cache_debug{};
 
 inline void aimbot_note_render_clock() {
   if (global_vars != nullptr && std::isfinite(global_vars->curtime)) {
@@ -262,6 +264,9 @@ inline bool aimbot_update_engine_bone_cache(Player* target,
                                             const matrix_3x4* bone_to_world,
                                             int bone_count,
                                             float setup_time) {
+  aimbot_bone_cache_debug.cache_updated = false;
+  aimbot_bone_cache_debug.cache_time = setup_time;
+  aimbot_bone_cache_debug.cache_handle = 0;
   if (target == nullptr || bone_to_world == nullptr || bone_count <= 0 ||
       bone_count > aimbot_max_bones || !std::isfinite(setup_time)) {
     return false;
@@ -273,6 +278,8 @@ inline bool aimbot_update_engine_bone_cache(Player* target,
     sigscan_module("client.so", sigs::studio_get_bone_cache));
   static const auto update_bone_cache = reinterpret_cast<update_bone_cache_fn>(
     sigscan_module("client.so", sigs::studio_bone_cache_update_bones));
+  aimbot_bone_cache_debug.getter_ready = get_bone_cache != nullptr;
+  aimbot_bone_cache_debug.updater_ready = update_bone_cache != nullptr;
   if (get_bone_cache == nullptr || update_bone_cache == nullptr) {
     return false;
   }
@@ -280,6 +287,7 @@ inline bool aimbot_update_engine_bone_cache(Player* target,
   constexpr std::uintptr_t bone_cache_handle_offset = 0xB98;
   const std::uintptr_t handle = *reinterpret_cast<const std::uintptr_t*>(
     reinterpret_cast<std::uintptr_t>(target) + bone_cache_handle_offset);
+  aimbot_bone_cache_debug.cache_handle = handle;
   if (handle == 0) {
     return false;
   }
@@ -290,6 +298,7 @@ inline bool aimbot_update_engine_bone_cache(Player* target,
   }
 
   update_bone_cache(cache, bone_to_world, bone_count, setup_time);
+  aimbot_bone_cache_debug.cache_updated = true;
   return true;
 }
 
@@ -428,10 +437,8 @@ inline bool aimbot_reconstruct_bones(Player* target,
   }
 
   Vec3 root_angles = ik_angles;
-  if (nographics::should_skip_rendering_hooks()) {
-    root_angles.x = 0.0f;
-    root_angles.z = 0.0f;
-  }
+  root_angles.x = 0.0f;
+  root_angles.z = 0.0f;
 
   matrix_3x4 root_transform{};
   make_angle_matrix(root_angles, root_origin, root_transform);
@@ -552,12 +559,15 @@ private:
 inline bool aimbot_setup_bones_at_time(Player* target,
   matrix_3x4* bone_to_world,
   float setup_time,
-  int,
-  const Vec3&,
-  bool,
+  int pose_frame,
+  const Vec3& network_origin,
+  bool clear_ik_targets,
   bool = false,
   int* bone_count_out = nullptr) {
   aimbot_bone_failure = aimbot_reject_reason::none;
+  aimbot_bone_cache_debug = {};
+  aimbot_bone_cache_debug.target_index = target != nullptr ? target->get_index() : -1;
+  aimbot_bone_cache_debug.current_frame = global_vars != nullptr ? global_vars->framecount : 0;
   if (bone_count_out != nullptr) {
     *bone_count_out = 0;
   }
@@ -594,33 +604,30 @@ inline bool aimbot_setup_bones_at_time(Player* target,
     return false;
   }
 
-  constexpr int bone_used_by_hitbox = 0x00000100;
   const int setup_bone_count = std::min(hdr->num_bones, aimbot_max_bones);
   if (setup_bone_count <= 0) {
     aimbot_bone_failure = aimbot_reject_reason::bone_cache;
     return false;
   }
 
-  if (target->setup_bones(bone_to_world, setup_bone_count, bone_used_by_hitbox, setup_time)) {
-    if (aimbot_bones_are_finite(bone_to_world, setup_bone_count)) {
-      if (nographics::should_skip_rendering_hooks()) {
-        const float cache_time = global_vars != nullptr && std::isfinite(global_vars->curtime)
-          ? global_vars->curtime
-          : setup_time;
-        if (!aimbot_update_engine_bone_cache(target, bone_to_world, setup_bone_count, cache_time)) {
-          aimbot_bone_failure = aimbot_reject_reason::bone_cache;
-          return false;
-        }
-      }
-      if (bone_count_out != nullptr) {
-        *bone_count_out = setup_bone_count;
-      }
-      return true;
-    }
+  if (!aimbot_reconstruct_bones(target, bone_to_world, setup_bone_count, setup_time,
+      pose_frame, network_origin, clear_ik_targets) ||
+      !aimbot_bones_are_finite(bone_to_world, setup_bone_count)) {
+    aimbot_bone_failure = aimbot_reject_reason::bone_reconstruction;
+    return false;
   }
 
-  aimbot_bone_failure = aimbot_reject_reason::bone_cache;
-  return false;
+  const float cache_time = global_vars != nullptr && std::isfinite(global_vars->curtime)
+    ? global_vars->curtime
+    : setup_time;
+  if (!aimbot_update_engine_bone_cache(target, bone_to_world, setup_bone_count, cache_time)) {
+    aimbot_bone_failure = aimbot_reject_reason::bone_cache;
+    return false;
+  }
+  if (bone_count_out != nullptr) {
+    *bone_count_out = setup_bone_count;
+  }
+  return true;
 }
 
 inline void aimbot_capture_latest_network_pose(Player* target,
@@ -671,6 +678,8 @@ inline void aimbot_capture_latest_network_pose(Player* target,
 
     pose.render_frame = global_vars != nullptr ? global_vars->framecount : pose.render_frame;
     pose.render_realtime = global_vars != nullptr ? global_vars->realtime : pose.render_realtime;
+    pose.debug.signature_reused = true;
+    pose.debug.current_frame = pose.render_frame;
     return;
   }
 
@@ -698,11 +707,34 @@ inline void aimbot_capture_latest_network_pose(Player* target,
   pose.pose_parameter_hash = pose_parameter_hash;
   pose.bone_count = 0;
   pose.generation = ++aimbot_pose_generation;
+  pose.debug = {};
+  pose.debug.target_index = index;
+  pose.debug.target_handle = target->get_ref_handle();
+  pose.debug.generation = pose.generation;
+  pose.debug.pose_frame = global_vars != nullptr ? global_vars->framecount : pose.generation;
+  pose.debug.current_frame = pose.debug.pose_frame;
+  pose.debug.simulation_time = simulation_time;
+  pose.debug.setup_time = setup_time;
+  pose.debug.simulation_age = global_vars != nullptr && std::isfinite(global_vars->curtime)
+    ? global_vars->curtime - simulation_time
+    : NAN;
 
   const int pose_frame = global_vars != nullptr ? global_vars->framecount : pose.generation;
   if (!aimbot_setup_bones_at_time(target, pose.bones.data(), setup_time,
       pose_frame, network_origin, clear_ik_targets, animation_already_updated,
       &pose.bone_count)) {
+    pose.debug = aimbot_bone_cache_debug;
+    pose.debug.target_index = index;
+    pose.debug.target_handle = target->get_ref_handle();
+    pose.debug.generation = pose.generation;
+    pose.debug.pose_frame = pose_frame;
+    pose.debug.current_frame = global_vars != nullptr ? global_vars->framecount : pose_frame;
+    pose.debug.simulation_time = simulation_time;
+    pose.debug.setup_time = setup_time;
+    pose.debug.simulation_age = global_vars != nullptr && std::isfinite(global_vars->curtime)
+      ? global_vars->curtime - simulation_time
+      : NAN;
+    pose.debug.failure = aimbot_last_bone_failure();
     return;
   }
 
@@ -715,6 +747,50 @@ inline void aimbot_capture_latest_network_pose(Player* target,
   pose.render_realtime = global_vars != nullptr ? global_vars->realtime : 0.0f;
   pose.setup_time = setup_time;
   pose.valid = pose.bone_count > 0;
+  pose.debug = aimbot_bone_cache_debug;
+  pose.debug.valid = pose.valid;
+  pose.debug.target_index = index;
+  pose.debug.target_handle = target->get_ref_handle();
+  pose.debug.bone_count = pose.bone_count;
+  pose.debug.generation = pose.generation;
+  pose.debug.pose_frame = pose.render_frame;
+  pose.debug.current_frame = global_vars != nullptr ? global_vars->framecount : pose.render_frame;
+  pose.debug.simulation_time = simulation_time;
+  pose.debug.setup_time = setup_time;
+  pose.debug.simulation_age = global_vars != nullptr && std::isfinite(global_vars->curtime)
+    ? global_vars->curtime - simulation_time
+    : NAN;
+}
+
+inline aimbot_pose_debug_info aimbot_get_pose_debug(Player* target) {
+  aimbot_pose_debug_info result{};
+  result.current_frame = global_vars != nullptr ? global_vars->framecount : 0;
+  if (target == nullptr) {
+    return result;
+  }
+
+  const int index = target->get_index();
+  result.target_index = index;
+  result.target_handle = target->get_ref_handle();
+  if (index <= 0 || index >= static_cast<int>(aimbot_current_poses.size())) {
+    return result;
+  }
+
+  const aimbot_current_pose& pose = aimbot_current_poses[static_cast<std::size_t>(index)];
+  if (pose.player == target) {
+    result = pose.debug;
+    result.target_index = index;
+    result.target_handle = target->get_ref_handle();
+    result.current_frame = global_vars != nullptr ? global_vars->framecount : result.current_frame;
+  }
+  return result;
+}
+
+inline aimbot_pose_debug_info aimbot_get_pose_debug_index(int index) {
+  if (index <= 0 || index >= static_cast<int>(aimbot_current_poses.size())) {
+    return {};
+  }
+  return aimbot_current_poses[static_cast<std::size_t>(index)].debug;
 }
 
 inline void aimbot_clear_network_pose(Player* target) {
@@ -781,15 +857,9 @@ inline bool aimbot_get_bones(Player* target, matrix_3x4* bone_to_world, int* bon
     return false;
   }
 
-  if (nographics::should_skip_rendering_hooks()) {
-    aimbot_capture_latest_network_pose(target, false);
-    const bool copied = aimbot_copy_network_pose_bones(target, bone_to_world, bone_count_out);
-    aimbot_bone_failure = copied ? aimbot_reject_reason::none : aimbot_reject_reason::bone_reconstruction;
-    return copied;
-  }
-
-  const bool copied = aimbot_copy_cached_bones(target, bone_to_world, bone_count_out);
-  aimbot_bone_failure = copied ? aimbot_reject_reason::none : aimbot_reject_reason::bone_cache;
+  aimbot_capture_latest_network_pose(target, false);
+  const bool copied = aimbot_copy_network_pose_bones(target, bone_to_world, bone_count_out);
+  aimbot_bone_failure = copied ? aimbot_reject_reason::none : aimbot_reject_reason::bone_reconstruction;
   return copied;
 }
 
