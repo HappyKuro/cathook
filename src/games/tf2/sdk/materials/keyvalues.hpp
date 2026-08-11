@@ -118,8 +118,9 @@ private:
   KeyValues* m_pPeer;
   KeyValues* m_pSub;
   KeyValues* m_pChain;
+  void* m_pGrowableStringTable;
 };
 
-static_assert(sizeof(KeyValues) == 64, "KeyValues ABI layout changed");
+static_assert(sizeof(KeyValues) == 72, "KeyValues ABI layout changed");
 
 #endif

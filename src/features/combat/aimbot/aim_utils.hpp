@@ -33,6 +33,7 @@ V  o o  V  file: src/features/combat/aimbot/aim_utils.hpp
 #include "games/tf2/sdk/interfaces/attribute_manager.hpp"
 #include "games/tf2/sdk/interfaces/convar_system.hpp"
 #include "games/tf2/sdk/interfaces/client.hpp"
+#include "games/tf2/sdk/interfaces/engine.hpp"
 #include "games/tf2/sdk/interfaces/engine_trace.hpp"
 #include "games/tf2/sdk/interfaces/global_vars.hpp"
 
@@ -190,6 +191,7 @@ inline bool aimbot_current_pose_signature_matches(const aimbot_current_pose& pos
                                                   std::uint64_t pose_parameter_hash,
                                                   float setup_time) {
   return pose.valid && pose.player == target && pose.model == model &&
+    global_vars != nullptr && pose.render_frame == global_vars->framecount &&
     pose.simulation_time == simulation_time &&
     std::memcmp(&pose.network_origin, &network_origin, sizeof(Vec3)) == 0 &&
     std::memcmp(&pose.render_origin, &render_origin, sizeof(Vec3)) == 0 &&
@@ -253,6 +255,41 @@ inline bool aimbot_invalidate_bone_cache(Player* target) {
   }
 
   invalidate_bone_cache(target);
+  return true;
+}
+
+inline bool aimbot_update_engine_bone_cache(Player* target,
+                                            const matrix_3x4* bone_to_world,
+                                            int bone_count,
+                                            float setup_time) {
+  if (target == nullptr || bone_to_world == nullptr || bone_count <= 0 ||
+      bone_count > aimbot_max_bones || !std::isfinite(setup_time)) {
+    return false;
+  }
+
+  using get_bone_cache_fn = void* (*)(std::uintptr_t);
+  using update_bone_cache_fn = void (*)(void*, const matrix_3x4*, int, float);
+  static const auto get_bone_cache = reinterpret_cast<get_bone_cache_fn>(
+    sigscan_module("client.so", sigs::studio_get_bone_cache));
+  static const auto update_bone_cache = reinterpret_cast<update_bone_cache_fn>(
+    sigscan_module("client.so", sigs::studio_bone_cache_update_bones));
+  if (get_bone_cache == nullptr || update_bone_cache == nullptr) {
+    return false;
+  }
+
+  constexpr std::uintptr_t bone_cache_handle_offset = 0xB98;
+  const std::uintptr_t handle = *reinterpret_cast<const std::uintptr_t*>(
+    reinterpret_cast<std::uintptr_t>(target) + bone_cache_handle_offset);
+  if (handle == 0) {
+    return false;
+  }
+
+  void* cache = get_bone_cache(handle);
+  if (cache == nullptr) {
+    return false;
+  }
+
+  update_bone_cache(cache, bone_to_world, bone_count, setup_time);
   return true;
 }
 
@@ -515,10 +552,10 @@ private:
 inline bool aimbot_setup_bones_at_time(Player* target,
   matrix_3x4* bone_to_world,
   float setup_time,
-  int pose_frame,
-  const Vec3& network_origin,
-  bool clear_ik_targets,
-  bool animation_already_updated = false,
+  int,
+  const Vec3&,
+  bool,
+  bool = false,
   int* bone_count_out = nullptr) {
   aimbot_bone_failure = aimbot_reject_reason::none;
   if (bone_count_out != nullptr) {
@@ -536,7 +573,7 @@ inline bool aimbot_setup_bones_at_time(Player* target,
     return false;
   }
 
-  if (!std::isfinite(setup_time) || !aimbot_vec3_is_finite(network_origin)) {
+  if (!std::isfinite(setup_time)) {
     aimbot_bone_failure = aimbot_reject_reason::bone_reconstruction;
     return false;
   }
@@ -551,42 +588,44 @@ inline bool aimbot_setup_bones_at_time(Player* target,
     return false;
   }
 
-  if (!animation_already_updated && !aimbot_update_client_side_animation(target)) {
-    aimbot_bone_failure = aimbot_reject_reason::bone_animation;
-    return false;
-  }
-
-  if (!aimbot_invalidate_bone_cache(target)) {
-    aimbot_bone_failure = aimbot_reject_reason::bone_invalidate;
-    return false;
-  }
-
   aimbot_bone_access_guard bone_access{};
   if (!bone_access.active()) {
     aimbot_bone_failure = aimbot_reject_reason::bone_access;
     return false;
   }
 
-  if (!aimbot_reconstruct_bones(target, bone_to_world, hdr->num_bones,
-      setup_time, pose_frame, network_origin, clear_ik_targets)) {
-    aimbot_bone_failure = aimbot_reject_reason::bone_reconstruction;
+  constexpr int bone_used_by_hitbox = 0x00000100;
+  const int setup_bone_count = std::min(hdr->num_bones, aimbot_max_bones);
+  if (setup_bone_count <= 0) {
+    aimbot_bone_failure = aimbot_reject_reason::bone_cache;
     return false;
   }
 
-  if (!aimbot_bones_are_finite(bone_to_world, hdr->num_bones)) {
-    aimbot_bone_failure = aimbot_reject_reason::bone_matrices;
-    return false;
+  if (target->setup_bones(bone_to_world, setup_bone_count, bone_used_by_hitbox, setup_time)) {
+    if (aimbot_bones_are_finite(bone_to_world, setup_bone_count)) {
+      if (nographics::should_skip_rendering_hooks()) {
+        const float cache_time = global_vars != nullptr && std::isfinite(global_vars->curtime)
+          ? global_vars->curtime
+          : setup_time;
+        if (!aimbot_update_engine_bone_cache(target, bone_to_world, setup_bone_count, cache_time)) {
+          aimbot_bone_failure = aimbot_reject_reason::bone_cache;
+          return false;
+        }
+      }
+      if (bone_count_out != nullptr) {
+        *bone_count_out = setup_bone_count;
+      }
+      return true;
+    }
   }
 
-  if (bone_count_out != nullptr) {
-    *bone_count_out = hdr->num_bones;
-  }
-  return true;
+  aimbot_bone_failure = aimbot_reject_reason::bone_cache;
+  return false;
 }
 
 inline void aimbot_capture_latest_network_pose(Player* target,
                                                 bool animation_already_updated = false) {
-  if (!nographics::should_skip_rendering_hooks() || target == nullptr) {
+  if (target == nullptr) {
     return;
   }
 
@@ -604,19 +643,20 @@ inline void aimbot_capture_latest_network_pose(Player* target,
   const model_t* model = target->get_model();
   const float simulation_time = target->get_simulation_time();
   const Vec3 network_origin = target->get_origin();
-  const Vec3 render_origin = nographics::should_skip_rendering_hooks()
-    ? target->get_abs_origin()
-    : target->get_render_origin();
+  const Vec3 render_origin = target->get_render_origin();
   const Vec3 velocity = target->get_velocity();
   const Vec3 eye_angles = target->get_eye_angles();
   const int sequence = aimbot_sequence(target);
   const float cycle = aimbot_cycle(target);
   const std::uint64_t pose_parameter_hash = aimbot_pose_parameter_hash(target);
-  const float setup_time = std::isfinite(aimbot_last_render_setup_time)
-    ? aimbot_last_render_setup_time
-    : (global_vars != nullptr && std::isfinite(global_vars->curtime)
-      ? global_vars->curtime
-      : simulation_time);
+  const float last_server_time = engine != nullptr ? engine->get_last_time_stamp() : NAN;
+  const float setup_time = std::isfinite(last_server_time) && last_server_time > 0.0f
+    ? last_server_time
+    : (std::isfinite(aimbot_last_render_setup_time)
+      ? aimbot_last_render_setup_time
+      : (global_vars != nullptr && std::isfinite(global_vars->curtime)
+        ? global_vars->curtime
+        : simulation_time));
   if (model == nullptr || !std::isfinite(simulation_time) || simulation_time <= 0.0f ||
       !aimbot_vec3_is_finite(network_origin) || !aimbot_vec3_is_finite(render_origin) ||
       !aimbot_vec3_is_finite(velocity) || !aimbot_vec3_is_finite(eye_angles) ||
@@ -661,7 +701,7 @@ inline void aimbot_capture_latest_network_pose(Player* target,
 
   const int pose_frame = global_vars != nullptr ? global_vars->framecount : pose.generation;
   if (!aimbot_setup_bones_at_time(target, pose.bones.data(), setup_time,
-      pose_frame, render_origin, clear_ik_targets, animation_already_updated,
+      pose_frame, network_origin, clear_ik_targets, animation_already_updated,
       &pose.bone_count)) {
     return;
   }
@@ -687,6 +727,42 @@ inline void aimbot_clear_network_pose(Player* target) {
   }
 }
 
+inline bool aimbot_copy_network_pose_bones(Player* target,
+                                           matrix_3x4* bone_to_world,
+                                           int* bone_count_out = nullptr) {
+  if (bone_count_out != nullptr) {
+    *bone_count_out = 0;
+  }
+  if (target == nullptr || bone_to_world == nullptr) {
+    return false;
+  }
+
+  const int index = target->get_index();
+  if (index <= 0 || index >= static_cast<int>(aimbot_current_poses.size())) {
+    return false;
+  }
+
+  const aimbot_current_pose& pose = aimbot_current_poses[static_cast<std::size_t>(index)];
+  if (!pose.valid || pose.player != target || pose.bone_count <= 0 ||
+      pose.bone_count > aimbot_max_bones || target->is_dormant() || !target->is_alive()) {
+    return false;
+  }
+
+  std::memcpy(bone_to_world, pose.bones.data(),
+    sizeof(matrix_3x4) * static_cast<std::size_t>(pose.bone_count));
+  if (!aimbot_bones_are_finite(bone_to_world, pose.bone_count)) {
+    if (bone_count_out != nullptr) {
+      *bone_count_out = 0;
+    }
+    return false;
+  }
+
+  if (bone_count_out != nullptr) {
+    *bone_count_out = pose.bone_count;
+  }
+  return true;
+}
+
 inline int aimbot_current_pose_generation(Player* target) {
   if (target == nullptr) {
     return 0;
@@ -700,52 +776,16 @@ inline int aimbot_current_pose_generation(Player* target) {
 }
 
 inline bool aimbot_get_bones(Player* target, matrix_3x4* bone_to_world, int* bone_count_out = nullptr) {
+  if (target == nullptr || bone_to_world == nullptr) {
+    aimbot_bone_failure = aimbot_reject_reason::invalid;
+    return false;
+  }
 
   if (nographics::should_skip_rendering_hooks()) {
-    if (target == nullptr || bone_to_world == nullptr) {
-      aimbot_bone_failure = aimbot_reject_reason::invalid;
-      return false;
-    }
-
     aimbot_capture_latest_network_pose(target, false);
-
-    const int index = target->get_index();
-    if (index <= 0 || index >= static_cast<int>(aimbot_current_poses.size())) {
-      aimbot_bone_failure = aimbot_reject_reason::bone_cache;
-      return false;
-    }
-    const aimbot_current_pose& pose = aimbot_current_poses[static_cast<std::size_t>(index)];
-    const float now = global_vars != nullptr ? global_vars->realtime : pose.render_realtime;
-
-    const float cache_age = std::isfinite(now) && std::isfinite(pose.render_realtime)
-      ? now - pose.render_realtime
-      : FLT_MAX;
-    if (!pose.valid || pose.player != target || pose.model != target->get_model() ||
-        pose.bone_count <= 0 || pose.bone_count > aimbot_max_bones ||
-        !std::isfinite(cache_age) || cache_age < -0.05f || cache_age > 0.25f) {
-      aimbot_bone_failure = aimbot_reject_reason::bone_cache;
-      return false;
-    }
-    std::memcpy(bone_to_world, pose.bones.data(),
-      sizeof(matrix_3x4) * static_cast<std::size_t>(pose.bone_count));
-
-    const Vec3 current_root = nographics::should_skip_rendering_hooks()
-      ? target->get_abs_origin()
-      : target->get_render_origin();
-    const Vec3 root_delta = current_root - pose.render_origin;
-    if (aimbot_vec3_is_finite(root_delta) &&
-        aimbot_distance_squared(root_delta, Vec3{}) > 0.0f) {
-      for (int bone = 0; bone < pose.bone_count; ++bone) {
-        bone_to_world[bone].mat[0][3] += root_delta.x;
-        bone_to_world[bone].mat[1][3] += root_delta.y;
-        bone_to_world[bone].mat[2][3] += root_delta.z;
-      }
-    }
-    if (bone_count_out != nullptr) {
-      *bone_count_out = pose.bone_count;
-    }
-    aimbot_bone_failure = aimbot_reject_reason::none;
-    return true;
+    const bool copied = aimbot_copy_network_pose_bones(target, bone_to_world, bone_count_out);
+    aimbot_bone_failure = copied ? aimbot_reject_reason::none : aimbot_reject_reason::bone_reconstruction;
+    return copied;
   }
 
   const bool copied = aimbot_copy_cached_bones(target, bone_to_world, bone_count_out);
@@ -923,10 +963,12 @@ inline bool aimbot_sniper_scope_time_ready(Player* localplayer) {
     return false;
   }
 
-  constexpr float sniper_headshot_scope_delay = 0.2f;
+  constexpr float sniper_headshot_scope_delay = 0.45f;
 
   return aimbot_tracked_scoped_time(localplayer) >= sniper_headshot_scope_delay;
 }
+
+inline bool aimbot_body_aim_lethal(Player* localplayer, Weapon* weapon, Player* target);
 
 inline float aimbot_distance_squared(const Vec3& left, const Vec3& right) {
   const Vec3 delta = left - right;
@@ -1008,10 +1050,11 @@ inline float aimbot_effective_bone_size_min_scale() {
 
 inline int aimbot_build_local_hitbox_points(const studio_box& hitbox,
   const matrix_3x4& bone_to_world,
-  const Vec3& shoot_pos,
+  const Vec3&,
   Vec3* points,
   int max_points,
-  bool include_multipoint) {
+  bool include_multipoint,
+  int base_hitbox = -1) {
   int point_count = 0;
   const Vec3 center = (hitbox.bbmin + hitbox.bbmax) * 0.5f;
   aimbot_add_local_hitbox_point(points, &point_count, max_points, center);
@@ -1025,32 +1068,35 @@ inline int aimbot_build_local_hitbox_points(const studio_box& hitbox,
     return point_count;
   }
 
-  const Vec3 local_shoot_pos = aimbot_inverse_transform_point(shoot_pos, bone_to_world);
-  aimbot_add_local_hitbox_point(points, &point_count, max_points, aimbot_clamp_to_hitbox(local_shoot_pos, hitbox));
-
-  const float subtract = aimbot_effective_bone_size_subtract();
-  const Vec3 extent_raw = (hitbox.bbmax - hitbox.bbmin) * 0.5f;
-  const Vec3 extent{
-    std::max(extent_raw.x - subtract, extent_raw.x * aimbot_effective_bone_size_min_scale()),
-    std::max(extent_raw.y - subtract, extent_raw.y * aimbot_effective_bone_size_min_scale()),
-    std::max(extent_raw.z - subtract, extent_raw.z * aimbot_effective_bone_size_min_scale())
+  const Vec3 corners[8]{
+    { hitbox.bbmin.x, hitbox.bbmin.y, hitbox.bbmin.z },
+    { hitbox.bbmax.x, hitbox.bbmin.y, hitbox.bbmin.z },
+    { hitbox.bbmin.x, hitbox.bbmax.y, hitbox.bbmin.z },
+    { hitbox.bbmax.x, hitbox.bbmax.y, hitbox.bbmin.z },
+    { hitbox.bbmin.x, hitbox.bbmin.y, hitbox.bbmax.z },
+    { hitbox.bbmax.x, hitbox.bbmin.y, hitbox.bbmax.z },
+    { hitbox.bbmin.x, hitbox.bbmax.y, hitbox.bbmax.z },
+    { hitbox.bbmax.x, hitbox.bbmax.y, hitbox.bbmax.z }
   };
+  const float shrink_base = base_hitbox >= aim_hitbox_pelvis && base_hitbox <= aim_hitbox_spine_3 ? 6.0f : 3.0f;
+  const float shrink_size = shrink_base;
+  Vec3 adjusted_corners[8]{};
+  for (int index = 0; index < 8; ++index) {
+    adjusted_corners[index] = corners[index] + (corners[7 - index] - corners[index]) * (1.0f / shrink_size);
+    aimbot_add_local_hitbox_point(points, &point_count, max_points, adjusted_corners[index]);
+  }
 
-  const Vec3 scaled_extent = extent * scale;
-  if (std::fabs(scaled_extent.x) > 1.0f &&
-      std::fabs(scaled_extent.y) > 1.0f &&
-      std::fabs(scaled_extent.z) > 1.0f) {
-    for (const float x_sign : { -1.0f, 1.0f }) {
-      for (const float y_sign : { -1.0f, 1.0f }) {
-        for (const float z_sign : { -1.0f, 1.0f }) {
-          aimbot_add_local_hitbox_point(
-            points,
-            &point_count,
-            max_points,
-            center + Vec3{ scaled_extent.x * x_sign, scaled_extent.y * y_sign, scaled_extent.z * z_sign });
-        }
-      }
-    }
+  const int edge_pairs[12][2] = {
+    {0, 1}, {0, 2}, {1, 3}, {2, 3},
+    {7, 6}, {7, 5}, {6, 4}, {5, 4},
+    {0, 4}, {1, 5}, {2, 6}, {3, 7}
+  };
+  for (const auto& edge : edge_pairs) {
+    aimbot_add_local_hitbox_point(
+      points,
+      &point_count,
+      max_points,
+      (adjusted_corners[edge[0]] + adjusted_corners[edge[1]]) * 0.5f);
   }
 
   return point_count;
@@ -1811,7 +1857,7 @@ inline aimbot_point aimbot_find_best_point(Player* localplayer,
         continue;
       }
 
-      constexpr int max_local_points = 10;
+      constexpr int max_local_points = 21;
       Vec3 local_points[max_local_points]{};
       const int point_count = aimbot_build_local_hitbox_points(
         *hitbox,
@@ -1819,7 +1865,8 @@ inline aimbot_point aimbot_find_best_point(Player* localplayer,
         shoot_pos,
         local_points,
         max_local_points,
-        require_visibility);
+        require_visibility,
+        hitbox_id);
 
       for (int point_index = 0; point_index < point_count; ++point_index) {
         const Vec3 hitbox_position = aimbot_transform_point(local_points[point_index], bone_to_world[hitbox->bone]);
@@ -2538,37 +2585,7 @@ inline bool aimbot_sniper_headshot_ready(Player* localplayer, Weapon* weapon) {
     return false;
   }
 
-  if (weapon->is_sniper_rifle() &&
-      weapon->get_weapon_id() != TF_WEAPON_SNIPERRIFLE_CLASSIC &&
-      !aimbot_sniper_scope_confirmed(localplayer)) {
-    return false;
-  }
-
-  const float charge = weapon->get_charged_damage();
-  if (!std::isfinite(charge) || charge <= 0.0f) {
-    return false;
-  }
-
-  if (weapon->can_fire_critical_shot(true)) {
-    return true;
-  }
-
-  if (attribute_manager != nullptr &&
-      attribute_manager->attrib_hook_value(
-        0,
-        "sniper_no_headshot_without_full_charge",
-        weapon->to_entity()) != 0) {
-    return aimbot_sniper_charge_full(weapon);
-  }
-
-  if (attribute_manager != nullptr &&
-      attribute_manager->attrib_hook_value(0, "sniper_crit_no_scope", weapon->to_entity()) != 0) {
-    return true;
-  }
-
-  return !weapon->is_sniper_rifle() ||
-    weapon->get_weapon_id() == TF_WEAPON_SNIPERRIFLE_CLASSIC ||
-    aimbot_sniper_scope_confirmed(localplayer);
+  return !weapon->is_sniper_rifle() || aimbot_sniper_scope_time_ready(localplayer);
 }
 
 inline bool aimbot_wait_for_headshot_ready(Player* localplayer, Weapon* weapon, const aimbot_candidate& candidate) {
@@ -2579,7 +2596,8 @@ inline bool aimbot_wait_for_headshot_ready(Player* localplayer, Weapon* weapon, 
   }
 
   if (candidate.hitbox >= 0 && candidate.hitbox != aim_hitbox_head) {
-    return false;
+    return candidate.player != nullptr &&
+      aimbot_body_aim_lethal(localplayer, weapon, candidate.player);
   }
 
   switch (weapon->get_weapon_id()) {
@@ -2697,16 +2715,8 @@ inline bool aimbot_wait_for_charge_ready(Player* localplayer,
     return true;
   }
 
-  const bool classic = weapon->get_weapon_id() == TF_WEAPON_SNIPERRIFLE_CLASSIC;
-  if (!classic && !aimbot_sniper_scope_confirmed(localplayer)) {
-    return false;
-  }
-
   const float charge = weapon->get_charged_damage();
-  if (!std::isfinite(charge) || charge <= 0.0f) {
-    return false;
-  }
-  if (aimbot_sniper_charge_full(weapon)) {
+  if (!localplayer->is_scoped() || aimbot_sniper_charge_full(weapon)) {
     return true;
   }
 
@@ -2721,7 +2731,9 @@ inline bool aimbot_wait_for_charge_ready(Player* localplayer,
     return false;
   }
 
-  return charge >= 50.0f;
+  const int damage = static_cast<int>(std::ceil(std::max(std::isfinite(charge) ? charge : 0.0f, 50.0f)));
+  const int health = aimbot_entity_health(candidate.entity);
+  return health <= 0 || health <= damage;
 }
 
 inline bool aimbot_is_projectile_weapon(Weapon* weapon) {

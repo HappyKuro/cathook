@@ -230,7 +230,9 @@ void* read_vtable_entry(void** vtable, int index, const char* hook_name)
   return entry;
 }
 
-bool write_to_table(void** vtable, int index, void* func) {
+namespace {
+
+bool write_to_table_impl(void** vtable, int index, void* func, const bool verbose) {
   if (func == nullptr || !is_executable_memory_address(func)) {
     print("refusing to install non-executable vtable target %p\n", func);
     return false;
@@ -246,7 +248,7 @@ bool write_to_table(void** vtable, int index, void* func) {
     return false;
   }
 
-  print("vfunc table page found at %p\n", page_permissions.page);
+  if (verbose) print("vfunc table page found at %p\n", page_permissions.page);
 
   if (!make_memory_page_writable(page_permissions)) {
     print("mprotect failed to change page protection\n");
@@ -261,6 +263,16 @@ bool write_to_table(void** vtable, int index, void* func) {
   }
 
   return true;
+}
+
+}
+
+bool write_to_table(void** vtable, int index, void* func) {
+  return write_to_table_impl(vtable, index, func, true);
+}
+
+bool write_to_table_quiet(void** vtable, int index, void* func) {
+  return write_to_table_impl(vtable, index, func, false);
 }
 
 bool write_pointer_slot(void** slot, void* value)

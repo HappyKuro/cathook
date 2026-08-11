@@ -17,6 +17,9 @@ struct decision {
 
 inline int pending_scope_state = -1;
 inline float pending_scope_request_time = -FLT_MAX;
+inline float auto_scope_last_target_time = -FLT_MAX;
+inline int last_scope_transition_state = -1;
+inline float last_scope_transition_time = -FLT_MAX;
 
 inline bool is_sniper_rifle(Player* localplayer, Weapon* weapon) {
   return localplayer != nullptr &&
@@ -26,15 +29,15 @@ inline bool is_sniper_rifle(Player* localplayer, Weapon* weapon) {
 }
 
 inline bool can_toggle(Player* localplayer, Weapon* weapon) {
-  // can_secondary_attack() is a cooldown check.  It must not gate the state
-  // machine: doing so drops an unscope request and leaves the rifle scoped
-  // until another unrelated target transition occurs.
   return is_sniper_rifle(localplayer, weapon);
 }
 
 inline void reset_auto_scope() {
   pending_scope_state = -1;
   pending_scope_request_time = -FLT_MAX;
+  auto_scope_last_target_time = -FLT_MAX;
+  last_scope_transition_state = -1;
+  last_scope_transition_time = -FLT_MAX;
 }
 
 inline bool scoped_only(Player* localplayer, Weapon* weapon) {
@@ -42,17 +45,28 @@ inline bool scoped_only(Player* localplayer, Weapon* weapon) {
     aimbot_modifier_enabled(Aim::hitscan_mod_scoped_only);
 }
 
-inline bool policy_requires_scope(Player* localplayer, Weapon* weapon) {
-  if (!is_sniper_rifle(localplayer, weapon) ||
-      weapon->get_weapon_id() == TF_WEAPON_SNIPERRIFLE_CLASSIC) {
+inline bool target_allows_no_scope(Player* localplayer, Entity* target) {
+  if (localplayer == nullptr || target == nullptr ||
+      target->get_class_id() != class_id::PLAYER) {
     return false;
   }
 
-  return scoped_only(localplayer, weapon) ||
-    aimbot_weapon_requires_scope(weapon) ||
-    (weapon->is_headshot_weapon() &&
-      aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot)) ||
-    aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_charge);
+  if (localplayer->get_weapon() != nullptr &&
+      localplayer->get_weapon()->get_def_id() == Sniper_m_TheMachina) {
+    return false;
+  }
+
+  const int health = aimbot_entity_health(target);
+  if (health <= (localplayer->get_tf_class() == tf_class::SNIPER ? 50 : 0)) {
+    return health > 0;
+  }
+  if (localplayer->is_crit_boosted() && health <= 150) {
+    return true;
+  }
+  if (localplayer->in_cond(TF_COND_CRITBOOSTED_RUNE_TEMP) && health <= 68) {
+    return true;
+  }
+  return false;
 }
 
 inline bool target_within_auto_scope_range(Player* localplayer, const Vec3& target_origin) {
@@ -60,7 +74,7 @@ inline bool target_within_auto_scope_range(Player* localplayer, const Vec3& targ
     return false;
   }
 
-  constexpr float auto_scope_range = 1850.0f;
+  const float auto_scope_range = std::clamp(config.aimbot.sniper_scope_distance, 250.0f, 4000.0f);
   const Vec3 delta = target_origin - localplayer->get_origin();
   if (!aimbot_vec3_is_finite(delta)) {
     return false;
@@ -87,6 +101,7 @@ inline bool enemy_target_within_auto_scope_range(Player* localplayer) {
   for (const entity_cache_player_entry& entry : entity_cache_players()) {
     if (entry.player != nullptr &&
         aimbot_player_skip_reason_for(localplayer, entry, weapon) == aimbot_player_skip_reason::none &&
+        !target_allows_no_scope(localplayer, entry.player) &&
         target_within_auto_scope_range(localplayer, entry.origin)) {
       return true;
     }
@@ -119,42 +134,58 @@ inline bool enemy_target_within_auto_scope_range(Player* localplayer) {
 
 inline decision resolve(Player* localplayer, Weapon* weapon, const aimbot_candidate& candidate) {
   if (!can_toggle(localplayer, weapon)) {
-    pending_scope_state = -1;
+    reset_auto_scope();
     return {};
   }
 
-  const bool selected_target_needs_scope = candidate.entity != nullptr &&
-    target_within_auto_scope_range(localplayer, candidate.entity) &&
-    policy_requires_scope(localplayer, weapon);
+  const float now = global_vars != nullptr ? global_vars->curtime : 0.0f;
+  const bool target_found = candidate.entity != nullptr;
+  if (target_found) {
+    auto_scope_last_target_time = now;
+  }
 
-  const bool headshot_wait_needs_scope = candidate.entity != nullptr &&
-    target_within_auto_scope_range(localplayer, candidate.entity) &&
-    is_sniper_rifle(localplayer, weapon) &&
-    weapon->is_headshot_weapon() &&
-    weapon->get_weapon_id() != TF_WEAPON_SNIPERRIFLE_CLASSIC &&
-    aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot);
-  const bool should_scope = selected_target_needs_scope ||
-    headshot_wait_needs_scope ||
-    (config.aimbot.sniper_auto_scope &&
-      enemy_target_within_auto_scope_range(localplayer));
+  const bool selected_target_needs_scope = target_found &&
+    !target_allows_no_scope(localplayer, candidate.entity);
+  const bool should_scope = config.aimbot.sniper_auto_scope &&
+    (selected_target_needs_scope || enemy_target_within_auto_scope_range(localplayer));
   const bool scope_confirmed = aimbot_sniper_scope_confirmed(localplayer);
-  if (should_scope == scope_confirmed) {
-    reset_auto_scope();
+  const bool should_unscope = config.aimbot.sniper_auto_unscope &&
+    !target_found &&
+    scope_confirmed &&
+    auto_scope_last_target_time > -FLT_MAX &&
+    now - auto_scope_last_target_time >=
+      std::max(0.0f, config.aimbot.sniper_scope_cancel_time) &&
+    !enemy_target_within_auto_scope_range(localplayer);
+  if (!should_scope && !should_unscope) {
+    pending_scope_state = -1;
+    pending_scope_request_time = -FLT_MAX;
+    return {};
+  }
+  if (should_scope && scope_confirmed) {
+    pending_scope_state = -1;
+    pending_scope_request_time = -FLT_MAX;
     return {};
   }
 
   const int desired_state = should_scope ? 1 : 0;
 
   constexpr float scope_toggle_retry_seconds = 0.35f;
-  const float now = global_vars != nullptr ? global_vars->curtime : 0.0f;
+  constexpr float scope_toggle_debounce_seconds = 1.0f;
   if (pending_scope_state == desired_state &&
       now >= pending_scope_request_time &&
       now - pending_scope_request_time < scope_toggle_retry_seconds) {
     return {};
   }
+  if (last_scope_transition_state != -1 &&
+      last_scope_transition_state != desired_state &&
+      now - last_scope_transition_time < scope_toggle_debounce_seconds) {
+    return {};
+  }
 
   pending_scope_state = desired_state;
   pending_scope_request_time = now;
+  last_scope_transition_state = desired_state;
+  last_scope_transition_time = now;
   return {
     .requested = should_scope ? action::scope : action::unscope,
     .reason = should_scope ? aimbot_debug_reason::auto_scope : aimbot_debug_reason::auto_unscope
@@ -166,17 +197,36 @@ inline bool fire_ready(Player* localplayer, Weapon* weapon) {
     return false;
   }
 
-  if (!policy_requires_scope(localplayer, weapon)) {
-    return true;
-  }
-  if (!aimbot_sniper_scope_confirmed(localplayer)) {
+  if (scoped_only(localplayer, weapon) && !aimbot_sniper_scope_confirmed(localplayer)) {
     return false;
   }
 
-  const bool waits_for_headshot = weapon->is_headshot_weapon() &&
-    aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot) &&
-    weapon->get_weapon_id() != TF_WEAPON_SNIPERRIFLE_CLASSIC;
-  return !waits_for_headshot || aimbot_sniper_scope_confirmed(localplayer);
+  if (scoped_only(localplayer, weapon) &&
+      aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot) &&
+      weapon->is_headshot_weapon() &&
+      !aimbot_sniper_scope_time_ready(localplayer)) {
+    return false;
+  }
+
+  if (pending_scope_state == 1 && !aimbot_sniper_scope_confirmed(localplayer)) {
+    return false;
+  }
+
+  if (pending_scope_state == 0 && aimbot_sniper_scope_confirmed(localplayer)) {
+    return false;
+  }
+
+  if (last_scope_transition_state == 0 &&
+      global_vars != nullptr &&
+      global_vars->curtime - last_scope_transition_time < 1.0f) {
+    return false;
+  }
+
+  if (!aimbot_sniper_scope_confirmed(localplayer) &&
+      aimbot_weapon_requires_scope(weapon)) {
+    return false;
+  }
+  return true;
 }
 
 inline bool apply(user_cmd* cmd, const decision& value) {

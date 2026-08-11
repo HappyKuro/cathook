@@ -159,25 +159,30 @@ bool trace_navigation_ray(Player* localplayer, const Vec3& start, const Vec3& en
 
   auto planar_distance = std::sqrt(length_sq);
   auto vertical_delta = end.z - start.z;
-  if (vertical_delta <= player_step_height)
+  if (vertical_delta < 0.0f)
   {
     return true;
   }
 
-  if (vertical_delta <= walkable_ramp_height && planar_distance >= walkable_ramp_run)
+  if (vertical_delta > player_step_height
+    && vertical_delta <= walkable_ramp_height
+    && planar_distance >= walkable_ramp_run)
   {
     return true;
   }
 
-  auto lifted_start = start;
-  auto lifted_end = end;
-  lifted_start.z += player_jump_height;
-  lifted_end.z += player_jump_height;
+  auto trace_start = start;
+  auto trace_end = end;
+  if (vertical_delta > player_step_height)
+  {
+    trace_start.z += player_jump_height;
+    trace_end.z += player_jump_height;
+  }
 
   auto mins = localplayer->get_player_mins(localplayer->is_ducking());
   auto maxs = localplayer->get_player_maxs(localplayer->is_ducking());
   auto trace = trace_t{};
-  engine_trace->trace_hull(&lifted_start, &lifted_end, &mins, &maxs, MASK_PLAYERSOLID, &trace);
+  engine_trace->trace_hull(&trace_start, &trace_end, &mins, &maxs, MASK_PLAYERSOLID, &trace);
   return !did_hit_trace(trace);
 }
 
@@ -696,7 +701,8 @@ follower_tick_result navbot_follow::tick(Player* localplayer, user_cmd* user_cmd
   if (current_time - last_vischeck_time_ >= 0.25f)
   {
     last_vischeck_time_ = current_time;
-    if (!is_transition_passable(active_path_, current_crumb_index_, localplayer))
+    if (!trace_navigation_ray(localplayer, local_origin, current_target)
+      || !is_transition_passable(active_path_, current_crumb_index_, localplayer))
     {
       fill_failure_result(result, follower_failure_reason::hazard_intersection, active_path_, current_crumb_index_);
       return result;

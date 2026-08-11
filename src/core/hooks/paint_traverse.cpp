@@ -21,6 +21,47 @@ V  o o  V  file: src/core/hooks/paint_traverse.cpp
 
 void (*paint_traverse_original)(void*, void*, bool, bool) = NULL;
 const char* (*get_panel_name_original)(void*, void*) = NULL;
+bool write_to_table_quiet(void** vtable, int index, void* func);
+extern void** vgui_vtable;
+
+void paint_traverse_hook(void* me, void* panel, bool force_repaint, bool allow_force);
+
+namespace {
+
+constexpr int paint_traverse_vtable_index = 42;
+
+class paint_traverse_original_scope final {
+public:
+  paint_traverse_original_scope() {
+    if (vgui_vtable == nullptr || paint_traverse_original == nullptr) return;
+
+    if (vgui_vtable[paint_traverse_vtable_index] == reinterpret_cast<void*>(paint_traverse_hook)) {
+      restored_ = write_to_table_quiet(
+        vgui_vtable, paint_traverse_vtable_index, reinterpret_cast<void*>(paint_traverse_original));
+    }
+  }
+
+  paint_traverse_original_scope(const paint_traverse_original_scope&) = delete;
+  paint_traverse_original_scope& operator=(const paint_traverse_original_scope&) = delete;
+
+  ~paint_traverse_original_scope() {
+    if (restored_) {
+      (void)write_to_table_quiet(
+        vgui_vtable, paint_traverse_vtable_index, reinterpret_cast<void*>(paint_traverse_hook));
+    }
+  }
+
+private:
+  bool restored_ = false;
+};
+
+void call_paint_traverse_original(void* me, void* panel, const bool force_repaint, const bool allow_force) {
+  if (paint_traverse_original == nullptr) return;
+  paint_traverse_original_scope scope{};
+  paint_traverse_original(me, panel, force_repaint, allow_force);
+}
+
+}
 
 void* vgui;
 const char* get_panel_name(void* panel) {
@@ -34,7 +75,7 @@ const char* get_panel_name(void* panel) {
 void paint_traverse_hook(void* me, void* panel, bool force_repaint, bool allow_force) {
   CATHOOK_HOOK_GUARD();
   if (cathook::core::is_detach_pending()) {
-    paint_traverse_original(me, panel, force_repaint, allow_force);
+    call_paint_traverse_original(me, panel, force_repaint, allow_force);
     cathook::core::service_detach_request();
     return;
   }
@@ -45,7 +86,7 @@ void paint_traverse_hook(void* me, void* panel, bool force_repaint, bool allow_f
     return;
   }
 
-  paint_traverse_original(me, panel, force_repaint, allow_force);
+  call_paint_traverse_original(me, panel, force_repaint, allow_force);
 
   if (panel_name != "MatSystemTopPanel") {
     return;

@@ -162,7 +162,9 @@ inline aimbot_candidate find_best_candidate(Player* localplayer,
   const std::size_t max_target_count = static_cast<std::size_t>(std::clamp(config.aimbot.max_targets, 1, 6));
   std::array<target_hint, 6> target_hints{};
   std::size_t target_hint_count = 0;
-  const Vec3 shoot_pos = localplayer->get_shoot_pos();
+  const Vec3 shoot_pos = hitscan_ready_selection
+    ? hitscan_aim_eye_position(localplayer)
+    : localplayer->get_shoot_pos();
 
   for (const entity_cache_player_entry& entry : entity_cache_players()) {
     Player* player = entry.player;

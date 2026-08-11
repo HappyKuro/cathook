@@ -8,6 +8,7 @@
 
 #include "core/config/config_store.hpp"
 #include "core/logger.hpp"
+#include "games/tf2/sdk/interfaces/render_view.hpp"
 namespace {
 
 std::string lower_copy(std::string value) {
@@ -23,23 +24,55 @@ bool valid_name(const std::string& name) {
   return path == path.filename() && name.find_first_of("\\/:*?\"<>|") == std::string::npos;
 }
 
+bool has_material_key(const std::string& vmt, const char* key) {
+  const std::string lower = lower_copy(vmt);
+  const std::string needle = lower_copy(key);
+  std::size_t position = 0;
+  while ((position = lower.find(needle, position)) != std::string::npos) {
+    const bool key_start = position == 0 || std::isspace(static_cast<unsigned char>(lower[position - 1])) ||
+      lower[position - 1] == '{';
+    const std::size_t after_key = position + needle.size();
+    const bool key_end = after_key >= lower.size() || std::isspace(static_cast<unsigned char>(lower[after_key])) ||
+      lower[after_key] == '"';
+    if (key_start && key_end) return true;
+    position = after_key;
+  }
+  return false;
+}
+
 bool truthy_material_key(const std::string& vmt, const char* key) {
   const std::string lower = lower_copy(vmt);
   const std::string needle = lower_copy(key);
-  const std::size_t position = lower.find(needle);
-  if (position == std::string::npos) return false;
-  const std::size_t value = lower.find_first_not_of(" \t\"", position + needle.size());
-  return value != std::string::npos && lower.compare(value, 1, "0") != 0;
+  std::size_t position = 0;
+  while ((position = lower.find(needle, position)) != std::string::npos) {
+    const bool key_start = position == 0 || std::isspace(static_cast<unsigned char>(lower[position - 1])) ||
+      lower[position - 1] == '{';
+    const std::size_t after_key = position + needle.size();
+    const bool key_end = after_key >= lower.size() || std::isspace(static_cast<unsigned char>(lower[after_key])) ||
+      lower[after_key] == '"';
+    if (!key_start || !key_end) {
+      position = after_key;
+      continue;
+    }
+    const std::size_t value = lower.find_first_not_of(" \t\r\n\"", after_key);
+    if (value == std::string::npos) return false;
+    return lower.compare(value, 1, "0") != 0 && lower.compare(value, 5, "false") != 0;
+  }
+  return false;
 }
 
 std::string normalize_vmt(std::string vmt) {
   const std::string lower = lower_copy(vmt);
+  const std::size_t body = lower.find('{');
+  const std::string shader = lower.substr(0, body == std::string::npos ? lower.size() : body);
+  const bool model_shader = shader.find("vertexlitgeneric") != std::string::npos ||
+    shader.find("unlitgeneric") != std::string::npos;
+  if (!model_shader) return vmt;
   const std::size_t closing_brace = vmt.rfind('}');
   if (closing_brace == std::string::npos) return vmt;
   std::string additions{};
-  if (lower.find("$model") == std::string::npos) additions += "\n\t$model \"1\"";
-  if ((lower.find("vertexlitgeneric") != std::string::npos || lower.find("unlitgeneric") != std::string::npos) &&
-      lower.find("$basetexture") == std::string::npos) {
+  if (!has_material_key(lower, "$model")) additions += "\n\t$model \"1\"";
+  if (lower.find("$basetexture") == std::string::npos) {
     additions += "\n\t$basetexture \"white\"";
   }
   if (additions.empty()) return vmt;
@@ -60,7 +93,11 @@ Material* material_manager::create_material(const std::string& name, const std::
     return nullptr;
   }
   Material* material = material_system->create_material(name.c_str(), key_values);
-  if (material == nullptr) key_values->delete_this();
+  // CreateMaterial consumes the KeyValues object, including on failure.
+  if (material != nullptr && material->is_error_material()) {
+    material->decrement_reference_count();
+    material = nullptr;
+  }
   return material;
 }
 
@@ -85,18 +122,21 @@ void material_manager::retire_material(material_definition& definition) {
 void material_manager::initialize_material(material_definition& definition) {
   if (definition.material != nullptr) return;
   definition.material = create_material(
-    "monolilth_material_" + std::to_string(++generation_) + "_" + definition.name, definition.vmt);
+    "monolilth_material_" + std::to_string(++generation_) + "_" + definition.name,
+    normalize_vmt(definition.vmt));
   if (definition.material == nullptr) return;
+  definition.material->set_material_flag(MATERIAL_VAR_WIREFRAME, definition.wireframe);
 }
 
 void material_manager::store_material(const std::string& name, const std::string& vmt, const bool locked) {
   material_definition definition{};
   definition.name = name;
-  definition.vmt = normalize_vmt(vmt);
+  definition.vmt = vmt;
   definition.locked = locked;
-  const std::string lower_vmt = lower_copy(definition.vmt);
+  const std::string lower_vmt = lower_copy(vmt);
   definition.needs_tint_variables = lower_vmt.find("$phongtint") != std::string::npos ||
     lower_vmt.find("$envmaptint") != std::string::npos;
+  definition.wireframe = truthy_material_key(definition.vmt, "$wireframe");
   definition.invert_cull = truthy_material_key(vmt, "$invertcull");
   definition.block_occluded = truthy_material_key(vmt, "$blockoccluded");
   materials_.insert_or_assign(name, std::move(definition));
@@ -105,7 +145,7 @@ void material_manager::store_material(const std::string& name, const std::string
 void material_manager::add_builtin_materials() {
   store_material("None", "\"UnlitGeneric\"\n{\n\t$color2 \"[0 0 0]\"\n\t$additive \"1\"\n}", true);
   store_material("Flat", "\"UnlitGeneric\"\n{\n\t$basetexture \"white\"\n}", true);
-  store_material("Shaded", "\"VertexLitGeneric\"\n{\n\t$basetexture \"white\"\n\t$model \"1\"\n}", true);
+  store_material("Shaded", "\"VertexLitGeneric\"\n{\n\t$basetexture \"white\"\n}", true);
   store_material("Wireframe", "\"UnlitGeneric\"\n{\n\t$basetexture \"white\"\n\t$wireframe \"1\"\n}", true);
   store_material("Fresnel", "\"VertexLitGeneric\"\n{\n\t$basetexture \"white\"\n\t$bumpmap \"models/player/shared/shared_normal\"\n\t$color2 \"[0 0 0]\"\n\t$additive \"1\"\n\t$phong \"1\"\n\t$phongfresnelranges \"[0 0.5 1]\"\n\t$envmap \"skybox/sky_dustbowl_01\"\n\t$envmapfresnel \"1\"\n}", true);
   store_material("Shine", "\"VertexLitGeneric\"\n{\n\t$additive \"1\"\n\t$envmap \"cubemaps/cubemap_sheen002.hdr\"\n\t$envmaptint \"[1 1 1]\"\n}", true);
@@ -239,15 +279,18 @@ bool material_manager::edit(const std::string& name, const std::string& vmt) {
   const std::unique_lock lock{mutex_};
   const auto iterator = materials_.find(name);
   if (iterator == materials_.end() || iterator->second.locked || vmt.empty()) return false;
-  const std::string normalized_vmt = normalize_vmt(vmt);
   std::ofstream stream{directory() / (name + ".vmt"), std::ios::binary | std::ios::trunc};
-  stream << normalized_vmt;
+  stream << vmt;
   if (!stream.good()) return false;
   retire_material(iterator->second);
   iterator->second.name = name;
-  iterator->second.vmt = normalized_vmt;
-  iterator->second.invert_cull = truthy_material_key(normalized_vmt, "$invertcull");
-  iterator->second.block_occluded = truthy_material_key(normalized_vmt, "$blockoccluded");
+  iterator->second.vmt = vmt;
+  const std::string lower_vmt = lower_copy(vmt);
+  iterator->second.needs_tint_variables = lower_vmt.find("$phongtint") != std::string::npos ||
+    lower_vmt.find("$envmaptint") != std::string::npos;
+  iterator->second.wireframe = truthy_material_key(vmt, "$wireframe");
+  iterator->second.invert_cull = truthy_material_key(vmt, "$invertcull");
+  iterator->second.block_occluded = truthy_material_key(vmt, "$blockoccluded");
   if (loaded_) {
     initialize_material(iterator->second);
     if (iterator->second.material == nullptr) {

@@ -49,7 +49,6 @@ private:
   cached_flag_home blu_flag_home_{};
   nav_area_id last_roam_area_{};
   float next_roam_refresh_time_ = 0.0f;
-  size_t roam_cursor_ = 0;
   std::array<navbot_job_availability, goal_type_count> job_availability_{};
   std::vector<goal_rejection> rejected_goals_{};
 };

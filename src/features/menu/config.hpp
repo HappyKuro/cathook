@@ -133,6 +133,8 @@ struct Aim {
   bool melee_swing_predict_lag = true;
   int melee_swing_validate_mode = 0;
   bool sniper_auto_scope = true;
+  bool sniper_auto_unscope = true;
+  float sniper_scope_distance = 2000.0f;
   float sniper_scope_cancel_time = 3.0f;
   bool auto_rev = false;
   bool auto_unrev = false;
@@ -897,6 +899,7 @@ struct Misc {
     bool navbot_draw_path_boxes = true;
     RGBA_float navbot_path_color = {.r = 1.0f, .g = 1.0f, .b = 1.0f, .a = 1.0f};
     bool navbot_dont_path_during_warmup = false;
+    bool navbot_hazards = false;
     bool navbot_look_at_path = false;
     bool navbot_look_at_path_silent = false;
     navbot_weapon_mode navbot_weapon_selection = navbot_weapon_mode::AUTO;

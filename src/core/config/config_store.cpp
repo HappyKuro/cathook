@@ -270,6 +270,8 @@ void config_store::import_config(const Config& config)
     set_bool("aimbot.melee_swing_predict_lag", config.aimbot.melee_swing_predict_lag);
     set_int("aimbot.melee_swing_validate_mode", config.aimbot.melee_swing_validate_mode);
     set_bool("aimbot.sniper_auto_scope", config.aimbot.sniper_auto_scope);
+    set_bool("aimbot.sniper_auto_unscope", config.aimbot.sniper_auto_unscope);
+    set_float("aimbot.sniper_scope_distance", config.aimbot.sniper_scope_distance);
     set_float("aimbot.sniper_scope_cancel_time", config.aimbot.sniper_scope_cancel_time);
     set_bool("aimbot.auto_rev", config.aimbot.auto_rev);
     set_bool("aimbot.auto_unrev", config.aimbot.auto_unrev);
@@ -619,6 +621,7 @@ void config_store::import_config(const Config& config)
     set_bool("misc.automation.navbot_draw_path_boxes", config.misc.automation.navbot_draw_path_boxes);
     set_color("misc.automation.navbot_path_color", config.misc.automation.navbot_path_color);
     set_bool("misc.automation.navbot_dont_path_during_warmup", config.misc.automation.navbot_dont_path_during_warmup);
+    set_bool("misc.automation.navbot_hazards", config.misc.automation.navbot_hazards);
     set_bool("misc.automation.navbot_look_at_path", config.misc.automation.navbot_look_at_path);
     set_bool("misc.automation.navbot_look_at_path_silent", config.misc.automation.navbot_look_at_path_silent);
     set_int("misc.automation.navbot_weapon_selection", static_cast<int>(config.misc.automation.navbot_weapon_selection));
@@ -744,7 +747,14 @@ void config_store::export_config(Config& config) const
     const bool legacy_auto_unscope = get_bool("aimbot.auto_unscope", false);
     config.aimbot.sniper_auto_scope = get_bool(
         "aimbot.sniper_auto_scope",
-        legacy_scoped_only || legacy_auto_scope || legacy_auto_unscope || config.aimbot.sniper_auto_scope);
+        legacy_scoped_only || legacy_auto_scope || config.aimbot.sniper_auto_scope);
+    config.aimbot.sniper_auto_unscope = get_bool(
+        "aimbot.sniper_auto_unscope",
+        legacy_auto_unscope || config.aimbot.sniper_auto_unscope);
+    config.aimbot.sniper_scope_distance = std::clamp(
+        get_float("aimbot.sniper_scope_distance", config.aimbot.sniper_scope_distance),
+        250.0f,
+        4000.0f);
     config.aimbot.sniper_scope_cancel_time = std::clamp(
         get_float("aimbot.sniper_scope_cancel_time", config.aimbot.sniper_scope_cancel_time),
         1.0f,
@@ -935,7 +945,7 @@ void config_store::export_config(Config& config) const
         load_layers("occluded", group.chams.occluded);
         group.glow.color = get_color(prefix + "glow.color", group.glow.color);
         group.glow.stencil = normalize_stencil_scale(get_float(prefix + "glow.stencil", group.glow.stencil));
-        group.glow.blur = std::clamp(get_float(prefix + "glow.blur", group.glow.blur), 0.0f, 10.0f);
+        group.glow.blur = std::clamp(get_float(prefix + "glow.blur", group.glow.blur), 0.0f, 100.0f);
         group.glow.start = std::clamp(get_float(prefix + "glow.start", group.glow.start), 0.0f, 2048.0f);
         group.glow.end = std::clamp(get_float(prefix + "glow.end", group.glow.end), 0.0f, 8192.0f);
         if (group.glow.end < group.glow.start) group.glow.end = group.glow.start;
@@ -968,7 +978,7 @@ void config_store::export_config(Config& config) const
         group.backtrack_visuals.glow.stencil = normalize_stencil_scale(
             get_float(prefix + "backtrack_visuals.glow.stencil", group.backtrack_visuals.glow.stencil));
         group.backtrack_visuals.glow.blur = std::clamp(
-            get_float(prefix + "backtrack_visuals.glow.blur", group.backtrack_visuals.glow.blur), 0.0f, 10.0f);
+            get_float(prefix + "backtrack_visuals.glow.blur", group.backtrack_visuals.glow.blur), 0.0f, 100.0f);
         group.backtrack_visuals.glow.start = std::clamp(
             get_float(prefix + "backtrack_visuals.glow.start", group.backtrack_visuals.glow.start), 0.0f, 2048.0f);
         group.backtrack_visuals.glow.end = std::clamp(
@@ -1433,6 +1443,9 @@ void config_store::export_config(Config& config) const
     config.misc.automation.navbot_dont_path_during_warmup = get_bool(
         "misc.automation.navbot_dont_path_during_warmup",
         legacy_navbot_warmup_block);
+    config.misc.automation.navbot_hazards = get_bool(
+        "misc.automation.navbot_hazards",
+        config.misc.automation.navbot_hazards);
     config.misc.automation.navbot_look_at_path = get_bool("misc.automation.navbot_look_at_path", config.misc.automation.navbot_look_at_path);
     config.misc.automation.navbot_look_at_path_silent = get_bool(
         "misc.automation.navbot_look_at_path_silent",

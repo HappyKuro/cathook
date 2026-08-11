@@ -373,7 +373,7 @@ aimbot_candidate find_best_hitscan_target(Player* localplayer,
       continue;
     }
 
-    if (!hitscan_aim_candidate_matches_configured_hitbox(candidate, weapon)) {
+    if (!hitscan_aim_candidate_matches_configured_hitbox(candidate, localplayer, weapon)) {
       aim_state::record_reject(
         aim_state::make_candidate_reject_debug(candidate, aimbot_reject_reason::wrong_hitbox));
       continue;
@@ -392,7 +392,7 @@ aimbot_candidate find_best_hitscan_target(Player* localplayer,
 
     for (const aimbot_candidate& ready_candidate : {current_candidate, backtrack_candidate}) {
       if (ready_candidate.entity == nullptr ||
-          !hitscan_aim_candidate_matches_configured_hitbox(ready_candidate, weapon) ||
+          !hitscan_aim_candidate_matches_configured_hitbox(ready_candidate, localplayer, weapon) ||
           !aimbot_fov_within_limit(ready_candidate.fov, ready_candidate.preferred ? 1.35f : 1.0f)) {
         continue;
       }
@@ -495,7 +495,7 @@ void compute_hitscan_fire(aimbot_run_context& ctx) {
 
 void compute_readiness(aimbot_run_context& ctx) {
   ctx.readiness.headshot = !ctx.hitscan ||
-    (hitscan_aim_candidate_matches_configured_hitbox(ctx.target, ctx.weapon) &&
+    (hitscan_aim_candidate_matches_configured_hitbox(ctx.target, ctx.local, ctx.weapon) &&
       hitscan_aim_head_only_fire_ready(ctx.local, ctx.weapon, ctx.target) &&
       hitscan_aim_headshot_ready(ctx.local, ctx.weapon, ctx.target));
   ctx.readiness.charge = !ctx.hitscan || hitscan_aim_charge_ready(ctx.local, ctx.weapon, ctx.target);
@@ -504,8 +504,7 @@ void compute_readiness(aimbot_run_context& ctx) {
   ctx.readiness.primary = weapon_allows_primary_fire(ctx.local, ctx.weapon) &&
     (ctx.cmd->buttons & IN_ATTACK2) == 0;
   ctx.readiness.attack = ctx.target.entity != nullptr &&
-    (aim_auto_shoot::weapon_can_attack_or_release(ctx.local, ctx.weapon) ||
-      melee_swing_active(ctx.local, ctx.weapon));
+    aim_auto_shoot::weapon_has_primary_ammo(ctx.weapon);
 
   ctx.debug.attack_gate_ready = ctx.readiness.attack;
   ctx.debug.charge_ready = ctx.readiness.charge;
@@ -564,7 +563,7 @@ void apply_fire_state(aimbot_run_context& ctx) {
   if (firing && ctx.hitscan && ctx.hitscan_fire.ready && ctx.target.player != nullptr) {
     resolver::note_shot(ctx.target.player, ctx.target.hitbox, ctx.target.simulation_time, ctx.target.backtrack);
   }
-  if (firing && !ctx.manual_attack && ctx.hitscan && ctx.hitscan_fire.ready && ctx.target.player != nullptr &&
+  if (firing && ctx.hitscan && ctx.hitscan_fire.ready && ctx.target.player != nullptr &&
       ctx.target.tick_count > 0) {
     ctx.cmd->tick_count = ctx.target.tick_count;
   }

@@ -74,6 +74,13 @@ public:
     get_view_angles_fn(this, angles);
   }
 
+  float get_last_time_stamp(void) {
+    void** vtable = *(void ***)this;
+
+    float (*get_last_time_stamp_fn)(void*) = (float (*)(void*))vtable[15];
+    return get_last_time_stamp_fn(this);
+  }
+
   void set_view_angles(Vec3& angles) {
     void** vtable = *(void ***)this;
 

@@ -1752,9 +1752,7 @@ inline apply_result apply(user_cmd* cmd, Player* local, Weapon* weapon,
   const bool raw_attack = (cmd->buttons & attack_button) != 0;
   bool manual_bow_release = is_bow(weapon) && same_charge_weapon(weapon) &&
     projectile_charge_state.last_aiming && projectile_charge_state.last_attack && !raw_attack;
-  const bool can_attack = has_ammo &&
-    ((info.secondary_attack ? weapon->can_secondary_attack() : weapon->can_primary_attack()) ||
-      (is_bow(weapon) && (charged || manual_bow_release)));
+  const bool can_attack = has_ammo;
 
   Vec3 target_angles = target.command_angles;
   const Aim::AimMode aim_mode = static_cast<Aim::AimMode>(std::clamp(

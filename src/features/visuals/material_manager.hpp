@@ -20,6 +20,7 @@ struct material_definition {
   MaterialVar* envmap_tint = nullptr;
   bool variables_initialized = false;
   bool needs_tint_variables = false;
+  bool wireframe = false;
   bool invert_cull = false;
   bool block_occluded = false;
 };

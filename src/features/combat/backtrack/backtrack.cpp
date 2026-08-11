@@ -199,7 +199,7 @@ send_datagram_fn g_send_datagram_original = nullptr;
 
 [[nodiscard]] Vec3 command_angles(Player* localplayer, const Vec3& bullet_angles)
 {
-  return localplayer != nullptr ? bullet_angles - (localplayer->get_punch_angles() * 2.0f) : bullet_angles;
+  return localplayer != nullptr ? bullet_angles - localplayer->get_punch_angles() : bullet_angles;
 }
 
 [[nodiscard]] bool point_within_weapon_range(Weapon* weapon, const Vec3& start_pos, const Vec3& point)
@@ -445,7 +445,7 @@ void run_manual_backtrack(user_cmd* user_cmd)
 
   const Vec3 shoot_pos = localplayer->get_shoot_pos();
   Vec3 forward{};
-  const Vec3 bullet_angles = user_cmd->view_angles + (localplayer->get_punch_angles() * 2.0f);
+  const Vec3 bullet_angles = user_cmd->view_angles + localplayer->get_punch_angles();
   angle_vectors(bullet_angles, &forward, nullptr, nullptr);
   if (!aimbot_vec3_is_finite(shoot_pos) || !aimbot_vec3_is_finite(forward)) {
     return;
@@ -626,7 +626,15 @@ bool add_record_hitbox(backtrack_record* record,
 
   matrix_3x4 bone_to_world[max_bones]{};
   int bone_count = 0;
-  if (!player->copy_cached_bones(bone_to_world, max_bones, &bone_count)) {
+  const float last_server_time = engine != nullptr ? engine->get_last_time_stamp() : NAN;
+  const float setup_time = std::isfinite(last_server_time) && last_server_time > 0.0f
+    ? last_server_time
+    : (global_vars != nullptr && std::isfinite(global_vars->curtime)
+      ? global_vars->curtime
+      : record->sim_time);
+  const int pose_frame = global_vars != nullptr ? global_vars->framecount : 0;
+  if (!aimbot_setup_bones_at_time(player, bone_to_world, setup_time, pose_frame,
+      player->get_origin(), true, false, &bone_count)) {
     return false;
   }
 
@@ -1200,7 +1208,7 @@ aimbot_candidate find_hitscan_candidate(Player* localplayer,
       box.bbmin = hitbox.mins;
       box.bbmax = hitbox.maxs;
 
-      constexpr int max_local_points = 10;
+      constexpr int max_local_points = 21;
       Vec3 local_points[max_local_points]{};
       const bool use_multipoint =
         hitbox.hitbox != aim_hitbox_head &&
@@ -1212,7 +1220,8 @@ aimbot_candidate find_hitscan_candidate(Player* localplayer,
         shoot_pos,
         local_points,
         max_local_points,
-        use_multipoint);
+        use_multipoint,
+        hitbox.hitbox);
 
       for (int point_index = 0; point_index < point_count; ++point_index) {
         const Vec3 point = aimbot_transform_point(local_points[point_index], record->bones[hitbox.bone]);

@@ -173,11 +173,23 @@ inline auto format_reject_detail(const aimbot_reject_debug& reject) -> std::stri
   text += " vis " + std::string(bool_text(reject.visible));
   if (reject.trace_entity_index >= 0 || reject.trace_hitbox >= 0) {
     text += " tr " + std::to_string(reject.trace_entity_index) + " hb " + std::to_string(reject.trace_hitbox);
+    text += " fr " + format_float(reject.trace_fraction, "%.3f");
+    text += " c " + std::to_string(reject.trace_contents);
   }
   if (reject.preferred) text += " pref";
   if (reject.current) text += " cur";
   if (reject.backtrack) text += " bt";
   return text;
+}
+
+inline auto format_reject_trace_path(const aimbot_reject_debug& reject) -> std::string
+{
+  if (reject.reason != aimbot_reject_reason::trace_blocked) {
+    return "n/a";
+  }
+  return "s " + format_float(reject.trace_start.x, "%.0f") + "," + format_float(reject.trace_start.y, "%.0f") + "," + format_float(reject.trace_start.z, "%.0f") +
+    " p " + format_float(reject.trace_point.x, "%.0f") + "," + format_float(reject.trace_point.y, "%.0f") + "," + format_float(reject.trace_point.z, "%.0f") +
+    " e " + format_float(reject.trace_end.x, "%.0f") + "," + format_float(reject.trace_end.y, "%.0f") + "," + format_float(reject.trace_end.z, "%.0f");
 }
 
 struct owned_indicator_rows final
@@ -214,6 +226,7 @@ inline auto build_aimbot_debug_rows() -> owned_indicator_rows
   add("last detail", format_reject_detail(state.last_reject));
   add("best reject", format_reject_summary(state.best_reject));
   add("best detail", format_reject_detail(state.best_reject));
+  add("best trace s/p/e", format_reject_trace_path(state.best_reject));
   add("skip ig/fr/ip/cl/tm/in/de/type", std::to_string(state.skipped_ignored) + "/" + std::to_string(state.skipped_friends) + "/" + std::to_string(state.skipped_ipc) + "/" + std::to_string(state.skipped_cloaked) + "/" + std::to_string(state.skipped_team) + "/" + std::to_string(state.skipped_invulnerable) + "/" + std::to_string(state.skipped_dead) + "/" + std::to_string(state.skipped_type));
   add("resolver", std::string(state.resolver_active ? "on " : "off ") + aimbot_debug_resolver_mode_name(state.resolver_mode) + " y" + std::to_string(state.resolver_candidates));
   add("res angle", format_float(state.resolver_yaw, "%.1f") + " / " + format_float(state.resolver_pitch, "%.1f"));
