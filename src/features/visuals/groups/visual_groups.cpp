@@ -1121,15 +1121,23 @@ float alpha_for_entity(Entity* entity, float start, float end, bool smooth_alpha
     return 1.0f;
   }
 
-  constexpr float fade_distance = 256.0f;
-  float alpha = 1.0f;
-  if (distance > end - fade_distance) {
-    alpha *= std::clamp((end - distance) / fade_distance, 0.0f, 1.0f);
-  }
-  if (start > 0.0f && distance < start + fade_distance) {
-    alpha *= std::clamp((distance - start) / fade_distance, 0.0f, 1.0f);
+  constexpr float max_fade_distance = 256.0f;
+  const float range = end - start;
+  if (range <= 0.0f) {
+    return 0.0f;
   }
 
+  const float fade_distance = std::min(max_fade_distance, range * 0.5f);
+  const auto smoothstep = [](float value) {
+    const float clamped = std::clamp(value, 0.0f, 1.0f);
+    return clamped * clamped * (3.0f - (2.0f * clamped));
+  };
+
+  float alpha = 1.0f;
+  if (start > 0.0f) {
+    alpha *= smoothstep((distance - start) / fade_distance);
+  }
+  alpha *= smoothstep((end - distance) / fade_distance);
   return alpha;
 }
 

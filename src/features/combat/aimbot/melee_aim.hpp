@@ -320,48 +320,29 @@ inline bool extrapolated_reach(Player* localplayer,
     return false;
   }
 
-  const aimbot_melee_swing_geometry geometry = aimbot_get_melee_swing_geometry(localplayer, weapon);
-  if (geometry.range <= 0.0f) {
+  if (!aimbot_vec3_is_finite(target_origin) || !aimbot_vec3_is_finite(swing_start) ||
+      !aimbot_vec3_is_finite(aim_angles)) {
     return false;
   }
 
-  Vec3 forward{};
-  angle_vectors(aim_angles, &forward, nullptr, nullptr);
-  if (!aimbot_vec3_is_finite(forward) || !aimbot_vec3_is_finite(swing_start)) {
-    return false;
-  }
+  struct target_origin_guard {
+    Player* target;
+    Vec3 origin;
+    Vec3 abs_origin;
 
-  const Vec3 end = swing_start + (forward * geometry.range);
-  const Vec3 target_mins = target->get_player_mins(target->is_ducking()) + target_origin;
-  const Vec3 target_maxs = target->get_player_maxs(target->is_ducking()) + target_origin;
+    explicit target_origin_guard(Player* value, const Vec3& predicted_origin)
+      : target(value), origin(value->get_origin()), abs_origin(value->get_abs_origin()) {
+      target->set_origin(predicted_origin);
+      target->set_abs_origin(predicted_origin);
+    }
 
-  float enter_fraction = 1.0f;
-  bool use_hull = false;
-  bool entered = aimbot_segment_aabb_enter_fraction(swing_start, end, target_mins, target_maxs, &enter_fraction);
-  if (!entered) {
-    const Vec3 hull_target_mins = target_mins + geometry.hull_mins;
-    const Vec3 hull_target_maxs = target_maxs + geometry.hull_maxs;
-    entered = aimbot_segment_aabb_enter_fraction(swing_start, end, hull_target_mins, hull_target_maxs, &enter_fraction);
-    use_hull = entered;
-  }
-  if (!entered) {
-    return false;
-  }
+    ~target_origin_guard() {
+      target->set_origin(origin);
+      target->set_abs_origin(abs_origin);
+    }
+  } guard{target, target_origin};
 
-  Vec3 trace_start = swing_start;
-  Vec3 trace_end = end;
-  Vec3 hull_mins = geometry.hull_mins;
-  Vec3 hull_maxs = geometry.hull_maxs;
-  ray_t ray = !use_hull
-    ? engine_trace->init_ray(&trace_start, &trace_end)
-    : engine_trace->init_ray(&trace_start, &trace_end, &hull_mins, &hull_maxs);
-  trace_filter filter{};
-  engine_trace->init_world_trace_filter(&filter);
-  trace_t world_trace{};
-
-  engine_trace->trace_ray(&ray, MASK_SOLID, &filter, &world_trace);
-  return !world_trace.all_solid && !world_trace.start_solid &&
-    world_trace.fraction + 0.001f >= enter_fraction;
+  return aimbot_trace_melee_swing(localplayer, weapon, target, swing_start, aim_angles);
 }
 
 struct swing_solution {
@@ -478,6 +459,13 @@ inline swing_solution find_predicted_swing(Player* localplayer, Weapon* weapon,
 
 }
 
+inline uint32_t melee_aim_configured_hitbox_mask() {
+  const uint32_t configured_mask = config.aimbot.melee_hitboxes & aim_hitbox_mask_all;
+  return configured_mask != aim_hitbox_mask_none
+    ? configured_mask
+    : aim_hitbox_mask_default_melee;
+}
+
 inline bool melee_aim_trace_candidate(Player* localplayer,
   Weapon* weapon,
   Player* target,
@@ -532,7 +520,7 @@ inline aimbot_candidate melee_aim_find_candidate(Player* localplayer,
     player,
     weapon,
     original_view_angles,
-    config.aimbot.melee_hitboxes,
+    melee_aim_configured_hitbox_mask(),
     false);
   if (!point.valid) {
     return candidate;

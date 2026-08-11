@@ -36,10 +36,14 @@ constexpr float pickup_destination_reach_distance = 20.0f;
 
 constexpr float melee_destination_clearance = 1.0f;
 constexpr float melee_destination_reach_distance = player_width + melee_destination_clearance;
+constexpr float melee_chase_switch_distance = 125.0f;
+constexpr float melee_chase_vertical_limit = 80.0f;
+constexpr float melee_chase_spy_approach_distance = 250.0f;
 constexpr float enemy_yolo_reach_distance = 500.0f;
 constexpr float follower_move_speed = 450.0f;
 constexpr float stuck_jump_interval = 0.2f;
 constexpr float stuck_jump_retry_time = 0.5f;
+constexpr float stuck_progress_speed_threshold = 32.0f;
 constexpr float stuck_fail_time = 1.25f;
 constexpr float blocked_fail_time = 4.0f;
 

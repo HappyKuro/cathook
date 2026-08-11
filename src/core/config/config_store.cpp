@@ -280,10 +280,6 @@ void config_store::import_config(const Config& config)
     set_int("aimbot.projectile_prediction_mode", static_cast<int>(config.aimbot.projectile_prediction_mode));
     set_int("aimbot.projectile_aim_pos", config.aimbot.projectile_aim_pos);
     set_float("aimbot.projectile_fov", config.aimbot.projectile_fov);
-    set_float("aimbot.projectile_snap_time", config.aimbot.projectile_snap_time);
-    set_bool("aimbot.projectile_snap_smooth", config.aimbot.projectile_snap_smooth);
-    set_float("aimbot.projectile_snap_smooth_start", config.aimbot.projectile_snap_smooth_start);
-    set_float("aimbot.projectile_snap_smooth_end", config.aimbot.projectile_snap_smooth_end);
     set_int("aimbot.projectile_max_sim_targets", config.aimbot.projectile_max_sim_targets);
     set_float("aimbot.projectile_max_sim_time", config.aimbot.projectile_max_sim_time);
     set_int("aimbot.projectile_multipoint_scale", config.aimbot.projectile_multipoint_scale);
@@ -615,7 +611,7 @@ void config_store::import_config(const Config& config)
     set_bool("misc.automation.navbot_dont_path_during_warmup", config.misc.automation.navbot_dont_path_during_warmup);
     set_bool("misc.automation.navbot_look_at_path", config.misc.automation.navbot_look_at_path);
     set_bool("misc.automation.navbot_look_at_path_silent", config.misc.automation.navbot_look_at_path_silent);
-    set_bool("misc.automation.navbot_auto_weapon", config.misc.automation.navbot_auto_weapon);
+    set_int("misc.automation.navbot_weapon_selection", static_cast<int>(config.misc.automation.navbot_weapon_selection));
     set_int("misc.automation.enemy_stalk_mode", static_cast<int>(config.misc.automation.enemy_stalk_mode));
     set_float("misc.automation.navbot_melee_target_range", config.misc.automation.navbot_melee_target_range);
     set_int("misc.automation.navbot_look_at_path_speed", config.misc.automation.navbot_look_at_path_speed);
@@ -693,13 +689,15 @@ void config_store::export_config(Config& config) const
     int saved_aim_mode = get_int("aimbot.aim_mode", legacy_aim_mode);
     if (!has_key("aimbot.aim_mode") && has_key("aimbot.projectile_aim_mode")) {
         const int legacy_projectile_mode = std::clamp(get_int("aimbot.projectile_aim_mode", 2), 0, 2);
-        saved_aim_mode = legacy_projectile_mode == 1
-            ? static_cast<int>(Aim::AimMode::SNAP)
-            : legacy_projectile_mode == 2
+        saved_aim_mode = legacy_projectile_mode == 2
             ? static_cast<int>(Aim::AimMode::PSILENT)
             : static_cast<int>(Aim::AimMode::PLAIN);
     }
-    config.aimbot.aim_mode = static_cast<Aim::AimMode>(std::clamp(saved_aim_mode, 0, 4));
+    if (saved_aim_mode < static_cast<int>(Aim::AimMode::PLAIN) ||
+        saved_aim_mode > static_cast<int>(Aim::AimMode::PSILENT)) {
+        saved_aim_mode = static_cast<int>(Aim::AimMode::PLAIN);
+    }
+    config.aimbot.aim_mode = static_cast<Aim::AimMode>(saved_aim_mode);
     config.aimbot.fov = get_float("aimbot.fov", config.aimbot.fov);
     config.aimbot.assist_strength = std::clamp(
         get_float("aimbot.assist_strength", config.aimbot.assist_strength),
@@ -803,14 +801,6 @@ void config_store::export_config(Config& config) const
         get_int("aimbot.projectile_prediction_mode", static_cast<int>(config.aimbot.projectile_prediction_mode)), 0, 1));
     config.aimbot.projectile_aim_pos = std::clamp(get_int("aimbot.projectile_aim_pos", config.aimbot.projectile_aim_pos), 0, 3);
     config.aimbot.projectile_fov = std::clamp(get_float("aimbot.projectile_fov", config.aimbot.projectile_fov), 0.0f, 180.0f);
-    config.aimbot.projectile_snap_time = std::clamp(
-        get_float("aimbot.projectile_snap_time", config.aimbot.projectile_snap_time), 0.0f, 1.0f);
-    config.aimbot.projectile_snap_smooth = get_bool(
-        "aimbot.projectile_snap_smooth", config.aimbot.projectile_snap_smooth);
-    config.aimbot.projectile_snap_smooth_start = std::clamp(
-        get_float("aimbot.projectile_snap_smooth_start", config.aimbot.projectile_snap_smooth_start), 1.0f, 100.0f);
-    config.aimbot.projectile_snap_smooth_end = std::clamp(
-        get_float("aimbot.projectile_snap_smooth_end", config.aimbot.projectile_snap_smooth_end), 1.0f, 100.0f);
     config.aimbot.projectile_max_sim_targets = std::clamp(
         get_int("aimbot.projectile_max_sim_targets", config.aimbot.projectile_max_sim_targets), 1, 6);
     config.aimbot.projectile_max_sim_time = std::clamp(
@@ -1433,7 +1423,10 @@ void config_store::export_config(Config& config) const
     config.misc.automation.navbot_look_at_path_silent = get_bool(
         "misc.automation.navbot_look_at_path_silent",
         config.misc.automation.navbot_look_at_path_silent);
-    config.misc.automation.navbot_auto_weapon = get_bool("misc.automation.navbot_auto_weapon", config.misc.automation.navbot_auto_weapon);
+    config.misc.automation.navbot_weapon_selection = static_cast<Misc::Automation::navbot_weapon_mode>(std::clamp(
+        get_int("misc.automation.navbot_weapon_selection", static_cast<int>(config.misc.automation.navbot_weapon_selection)),
+        0,
+        4));
     config.misc.automation.enemy_stalk_mode = static_cast<Misc::Automation::navbot_enemy_stalk_mode>(std::clamp(
         get_int("misc.automation.enemy_stalk_mode", static_cast<int>(config.misc.automation.enemy_stalk_mode)),
         0,

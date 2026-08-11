@@ -307,6 +307,13 @@ navbot_weapon_slot weapon_slot_for_type(int type_id, tf_class class_type)
     case TF_WEAPON_STICKBOMB:
     case TF_WEAPON_HARVESTER_SAW:
       return navbot_weapon_slot::melee;
+    case TF_WEAPON_PDA:
+    case TF_WEAPON_PDA_ENGINEER_BUILD:
+    case TF_WEAPON_PDA_ENGINEER_DESTROY:
+    case TF_WEAPON_PDA_SPY:
+    case TF_WEAPON_PDA_SPY_BUILD:
+    case TF_WEAPON_BUILDER:
+      return navbot_weapon_slot::none;
     case TF_WEAPON_SCATTERGUN:
     case TF_WEAPON_SNIPERRIFLE:
     case TF_WEAPON_MINIGUN:
@@ -374,123 +381,24 @@ navbot_weapon_slot weapon_slot_for(Weapon* weapon, tf_class class_type)
     return navbot_weapon_slot::none;
   }
 
+  switch (weapon->get_slot())
+  {
+    case 0:
+      return navbot_weapon_slot::primary;
+    case 1:
+      return navbot_weapon_slot::secondary;
+    case 2:
+      return navbot_weapon_slot::melee;
+    default:
+      break;
+  }
+
   if (weapon->is_melee())
   {
     return navbot_weapon_slot::melee;
   }
 
-  if (weapon->is_sniper_rifle() || weapon->is_minigun())
-  {
-    return navbot_weapon_slot::primary;
-  }
-
-  switch (weapon->get_def_id())
-  {
-    case Scout_m_Scattergun:
-    case Scout_m_ScattergunR:
-    case Scout_m_ForceANature:
-    case Scout_m_TheShortstop:
-    case Scout_m_TheSodaPopper:
-    case Scout_m_FestiveScattergun:
-    case Scout_m_BabyFacesBlaster:
-    case Scout_m_TheBackScatter:
-    case Soldier_m_RocketLauncher:
-    case Soldier_m_RocketLauncherR:
-    case Soldier_m_TheDirectHit:
-    case Soldier_m_TheBlackBox:
-    case Soldier_m_RocketJumper:
-    case Soldier_m_TheLibertyLauncher:
-    case Soldier_m_TheCowMangler5000:
-    case Soldier_m_TheOriginal:
-    case Soldier_m_FestiveRocketLauncher:
-    case Soldier_m_TheBeggarsBazooka:
-    case Soldier_m_FestiveBlackBox:
-    case Soldier_m_TheAirStrike:
-    case Pyro_m_FlameThrower:
-    case Pyro_m_FlameThrowerR:
-    case Pyro_m_TheBackburner:
-    case Pyro_m_TheDegreaser:
-    case Pyro_m_ThePhlogistinator:
-    case Pyro_m_FestiveFlameThrower:
-    case Pyro_m_TheRainblower:
-    case Pyro_m_FestiveBackburner:
-    case Pyro_m_DragonsFury:
-    case Demoman_m_GrenadeLauncher:
-    case Demoman_m_GrenadeLauncherR:
-    case Demoman_m_TheLochnLoad:
-    case Demoman_m_TheLooseCannon:
-    case Demoman_m_FestiveGrenadeLauncher:
-    case Demoman_m_TheIronBomber:
-    case Medic_m_SyringeGun:
-    case Medic_m_SyringeGunR:
-    case Medic_m_TheBlutsauger:
-    case Medic_m_CrusadersCrossbow:
-    case Medic_m_TheOverdose:
-    case Medic_m_FestiveCrusadersCrossbow:
-    case Spy_m_Revolver:
-    case Spy_m_RevolverR:
-    case Spy_m_TheAmbassador:
-    case Spy_m_BigKill:
-    case Spy_m_LEtranger:
-    case Spy_m_TheEnforcer:
-    case Spy_m_TheDiamondback:
-    case Spy_m_FestiveAmbassador:
-    case Spy_m_FestiveRevolver:
-      return navbot_weapon_slot::primary;
-
-    case Scout_s_ScoutsPistol:
-    case Scout_s_PistolR:
-    case Scout_s_BonkAtomicPunch:
-    case Scout_s_VintageLugermorph:
-    case Scout_s_CritaCola:
-    case Scout_s_MadMilk:
-    case Scout_s_Lugermorph:
-    case Scout_s_TheWinger:
-    case Scout_s_PrettyBoysPocketPistol:
-    case Scout_s_TheFlyingGuillotine:
-    case Scout_s_TheFlyingGuillotineG:
-    case Scout_s_MutatedMilk:
-    case Scout_s_FestiveBonk:
-    case Pyro_s_TheFlareGun:
-    case Pyro_s_TheDetonator:
-    case Pyro_s_TheReserveShooter:
-    case Pyro_s_TheManmelter:
-    case Pyro_s_TheScorchShot:
-    case Pyro_s_FestiveFlareGun:
-    case Pyro_s_ThermalThruster:
-    case Pyro_s_GasPasser:
-    case Heavy_s_Sandvich:
-    case Heavy_s_TheBuffaloSteakSandvich:
-    case Heavy_s_Fishcake:
-    case Heavy_s_SecondBanana:
-    case Medic_s_MediGun:
-    case Medic_s_TheQuickFix:
-    case Medic_s_TheVaccinator:
-    case Sniper_s_SMG:
-    case Sniper_s_SMGR:
-    case Sniper_s_TheCleanersCarbine:
-    case Sniper_s_DarwinsDangerShield:
-    case Sniper_s_Jarate:
-    case Sniper_s_TheSelfAwareBeautyMark:
-    case Sniper_s_CozyCamper:
-    case Spy_w_InvisWatch:
-    case Spy_w_InvisWatchR:
-    case Spy_w_TheDeadRinger:
-    case Spy_w_TheCloakandDagger:
-    case Spy_w_EnthusiastsTimepiece:
-    case Spy_w_TheQuackenbirdt:
-      return navbot_weapon_slot::secondary;
-  }
-
-  switch (class_type)
-  {
-    case tf_class::MEDIC:
-      return navbot_weapon_slot::secondary;
-    case tf_class::SPY:
-      return navbot_weapon_slot::primary;
-    default:
-      return navbot_weapon_slot::primary;
-  }
+  return weapon_slot_for_type(weapon->get_weapon_id(), class_type);
 }
 
 bool weapon_slot_available(Player* localplayer, navbot_weapon_slot slot)
@@ -518,6 +426,26 @@ bool weapon_slot_available(Player* localplayer, navbot_weapon_slot slot)
   return false;
 }
 
+Weapon* weapon_for_slot(Player* localplayer, navbot_weapon_slot slot)
+{
+  if (localplayer == nullptr || slot == navbot_weapon_slot::none)
+  {
+    return nullptr;
+  }
+
+  const auto class_type = localplayer->get_tf_class();
+  for (int index = 0; index < Player::max_weapon_count; ++index)
+  {
+    auto* weapon = localplayer->get_weapon_at(index);
+    if (weapon != nullptr && weapon_slot_for(weapon, class_type) == slot)
+    {
+      return weapon;
+    }
+  }
+
+  return nullptr;
+}
+
 bool weapon_slot_loaded(Player* localplayer, navbot_weapon_slot slot)
 {
   if (localplayer == nullptr || slot == navbot_weapon_slot::none)
@@ -535,8 +463,9 @@ bool weapon_slot_loaded(Player* localplayer, navbot_weapon_slot slot)
     }
 
     auto clip = weapon->get_clip1();
-    if (clip != 0
+    if (clip > 0
       || weapon->is_melee()
+      || weapon->is_medigun()
       || localplayer->get_ammo_count(weapon->get_primary_ammo_type()) > 0)
     {
       return true;
@@ -621,44 +550,71 @@ navbot_weapon_slot choose_combat_slot(Player* localplayer, goal_type goal, Playe
     return navbot_weapon_slot::melee;
   }
 
-  auto enemy_distance = distance_to_enemy(localplayer, enemy);
+  if (enemy == nullptr)
+  {
+    return choose_default_slot(localplayer->get_tf_class());
+  }
+
+  const auto enemy_distance = distance_to_enemy(localplayer, enemy);
+  const auto melee_reachable = std::fabs(enemy->get_origin().z - localplayer->get_origin().z) <= 80.0f;
+  const auto primary_loaded = weapon_slot_loaded(localplayer, navbot_weapon_slot::primary);
+  const auto secondary_loaded = weapon_slot_loaded(localplayer, navbot_weapon_slot::secondary);
   switch (localplayer->get_tf_class())
   {
-    case tf_class::SNIPER:
-      if (enemy_distance <= 150.0f)
+    case tf_class::SCOUT:
+      if (melee_reachable && !primary_loaded && !secondary_loaded && enemy_distance <= 200.0f)
       {
         return navbot_weapon_slot::melee;
       }
-      if (enemy_distance <= 425.0f)
+      if (secondary_loaded && (!primary_loaded || enemy_distance > 900.0f))
+      {
+        return navbot_weapon_slot::secondary;
+      }
+      return navbot_weapon_slot::primary;
+    case tf_class::SNIPER:
+      if (melee_reachable && enemy_distance <= 200.0f)
+      {
+        return navbot_weapon_slot::melee;
+      }
+      if (secondary_loaded && enemy_distance <= 240.0f && !primary_loaded)
       {
         return navbot_weapon_slot::secondary;
       }
       return navbot_weapon_slot::primary;
     case tf_class::SOLDIER:
-    case tf_class::DEMOMAN:
-      if (enemy_distance <= 225.0f)
+    {
+      auto* enemy_weapon = enemy->get_weapon();
+      const auto enemy_can_airblast = enemy_weapon != nullptr
+        && enemy_weapon->is_flamethrower()
+        && enemy_weapon->get_def_id() != Pyro_m_ThePhlogistinator;
+      if (secondary_loaded && (!primary_loaded || enemy_can_airblast
+        || (enemy_distance <= 250.0f && enemy->get_health() <= 90)))
       {
         return navbot_weapon_slot::secondary;
       }
       return navbot_weapon_slot::primary;
+    }
+    case tf_class::DEMOMAN:
+      return primary_loaded ? navbot_weapon_slot::primary
+        : (melee_reachable && enemy_distance <= 260.0f ? navbot_weapon_slot::melee : navbot_weapon_slot::primary);
     case tf_class::PYRO:
-      if (enemy_distance <= 360.0f)
+      if (primary_loaded && enemy_distance <= 520.0f)
       {
         return navbot_weapon_slot::primary;
       }
       return navbot_weapon_slot::secondary;
     case tf_class::MEDIC:
-      if (goal_is_combat(goal))
+      if (weapon_slot_loaded(localplayer, navbot_weapon_slot::secondary))
       {
-        if (enemy_distance <= 120.0f)
-        {
-          return navbot_weapon_slot::melee;
-        }
-        return navbot_weapon_slot::primary;
+        auto* medigun = weapon_for_slot(localplayer, navbot_weapon_slot::secondary);
+        if (medigun != nullptr && medigun->is_medigun() && medigun->medigun_healing_target() != nullptr)
+          return navbot_weapon_slot::secondary;
       }
-      return navbot_weapon_slot::secondary;
+      if (melee_reachable && (!primary_loaded || enemy_distance <= 120.0f))
+        return navbot_weapon_slot::melee;
+      return navbot_weapon_slot::primary;
     case tf_class::SPY:
-      if (enemy_distance <= 110.0f)
+      if (melee_reachable && (localplayer->in_cond(TF_COND_STEALTHED) || enemy_distance <= 110.0f))
       {
         return navbot_weapon_slot::melee;
       }
@@ -668,12 +624,11 @@ navbot_weapon_slot choose_combat_slot(Player* localplayer, goal_type goal, Playe
       {
         return navbot_weapon_slot::primary;
       }
-      if (enemy_distance <= 260.0f)
+      if (primary_loaded && enemy_distance <= 1000.0f)
       {
         return navbot_weapon_slot::primary;
       }
-      return navbot_weapon_slot::secondary;
-    case tf_class::SCOUT:
+      return secondary_loaded ? navbot_weapon_slot::secondary : navbot_weapon_slot::primary;
     case tf_class::HEAVYWEAPONS:
     case tf_class::UNDEFINED:
     default:
@@ -710,6 +665,26 @@ navbot_weapon_slot choose_navbot_weapon_slot(Player* localplayer, const navbot_g
   }
 
   auto* enemy = choose_navbot_enemy(localplayer);
+  const auto weapon_mode = config.misc.automation.navbot_weapon_selection;
+  if (weapon_mode != Misc::Automation::navbot_weapon_mode::AUTO)
+  {
+    switch (weapon_mode)
+    {
+      case Misc::Automation::navbot_weapon_mode::PRIMARY:
+        return weapon_slot_available(localplayer, navbot_weapon_slot::primary)
+          ? navbot_weapon_slot::primary : navbot_weapon_slot::none;
+      case Misc::Automation::navbot_weapon_mode::SECONDARY:
+        return weapon_slot_available(localplayer, navbot_weapon_slot::secondary)
+          ? navbot_weapon_slot::secondary : navbot_weapon_slot::none;
+      case Misc::Automation::navbot_weapon_mode::MELEE:
+        return weapon_slot_available(localplayer, navbot_weapon_slot::melee)
+          ? navbot_weapon_slot::melee : navbot_weapon_slot::none;
+      case Misc::Automation::navbot_weapon_mode::OFF:
+      default:
+        return navbot_weapon_slot::none;
+    }
+  }
+
   auto desired_slot = goal_is_combat(goal)
     ? choose_combat_slot(localplayer, goal, enemy)
     : choose_default_slot(localplayer->get_tf_class());
@@ -1155,14 +1130,30 @@ void navbot_controller::apply_post_anti_aim(user_cmd* user_cmd)
     return;
   }
 
+  if ((user_cmd->buttons & (IN_ATTACK | IN_ATTACK2 | IN_ATTACK3)) != 0)
+  {
+    return;
+  }
+
   if (!apply_path_spin(user_cmd, follower_.crumbs(), follower_.current_crumb_index()))
   {
+    const bool look_applied = apply_look_at_path(
+      entity_list != nullptr ? entity_list->get_localplayer() : nullptr,
+      user_cmd,
+      follower_.crumbs(),
+      follower_.current_crumb_index());
+    silent_path_look_ = look_applied && config.misc.automation.navbot_look_at_path_silent;
+    if (silent_path_look_)
+    {
+      silent_path_look_angles_ = user_cmd->view_angles;
+    }
     return;
   }
 
   if (config.misc.automation.navbot_look_at_path_silent)
   {
     silent_path_look_ = true;
+    silent_path_look_angles_ = user_cmd->view_angles;
     return;
   }
 
@@ -1189,6 +1180,7 @@ void navbot_controller::clear_runtime_state()
   crumb_failure_ = {};
   suppress_aimbot_for_reload_ = false;
   silent_path_look_ = false;
+  silent_path_look_angles_ = {};
   reset_debug_runtime(debug_state_);
 }
 
@@ -1244,10 +1236,29 @@ bool navbot_controller::active_goal_needs_reset(Player* localplayer) const
     auto* target = target_entity != nullptr && target_entity->get_class_id() == class_id::PLAYER
       ? reinterpret_cast<Player*>(target_entity)
       : nullptr;
-    return target == nullptr
+    if (target == nullptr
       || target->is_dormant()
       || !target->is_alive()
-      || target->get_team() == localplayer->get_team();
+      || target->get_team() == localplayer->get_team())
+    {
+      return true;
+    }
+
+    const auto target_distance = distance_3d(localplayer->get_origin(), target->get_origin());
+    const auto target_range = std::clamp(config.misc.automation.navbot_melee_target_range, 150.0f, 4000.0f);
+    if (target_distance > target_range
+      || std::fabs(target->get_origin().z - localplayer->get_origin().z) > melee_chase_vertical_limit)
+    {
+      return true;
+    }
+
+    if (localplayer->get_tf_class() == tf_class::SPY)
+    {
+      return !localplayer->in_cond(TF_COND_STEALTHED)
+        && target_distance > melee_chase_spy_approach_distance;
+    }
+
+    return target_distance > melee_chase_switch_distance;
   }
 
   if (active_goal_.goal.type == goal_type::mvm_tank
@@ -1549,6 +1560,7 @@ void navbot_controller::on_create_move(user_cmd* user_cmd)
 {
   suppress_aimbot_for_reload_ = false;
   silent_path_look_ = false;
+  silent_path_look_angles_ = {};
   if (!config.misc.automation.navbot_enabled && !followbot::controller().wants_nav())
   {
     return;
@@ -1638,19 +1650,7 @@ void navbot_controller::on_create_move(user_cmd* user_cmd)
   }
 
   navbot_update_throwable_look_suppress(localplayer->get_weapon(), user_cmd, current_time);
-  if (config.misc.automation.navbot_look_at_path && !navbot_throwable_look_suppresses_path_look(current_time))
-  {
-    if (follower_.current_crumb() != nullptr)
-    {
-      const bool look_applied = apply_look_at_path(
-        localplayer,
-        user_cmd,
-        follower_.crumbs(),
-        follower_.current_crumb_index());
-      silent_path_look_ = look_applied && config.misc.automation.navbot_look_at_path_silent;
-    }
-  }
-  else if (!config.misc.automation.navbot_look_at_path)
+  if (!config.misc.automation.navbot_look_at_path)
   {
     reset_path_spin_state();
   }
@@ -1710,9 +1710,15 @@ bool navbot_controller::has_silent_path_look() const
   return silent_path_look_;
 }
 
+Vec3 navbot_controller::silent_path_look_angles() const
+{
+  return silent_path_look_angles_;
+}
+
 void navbot_controller::update_weapon_choice(Player* localplayer)
 {
-  if (!config.misc.automation.navbot_auto_weapon || localplayer == nullptr || engine == nullptr)
+  if (config.misc.automation.navbot_weapon_selection == Misc::Automation::navbot_weapon_mode::OFF
+    || localplayer == nullptr || engine == nullptr)
   {
     return;
   }
@@ -2068,6 +2074,32 @@ bool navbot_controller::should_prioritize_melee_movement() const
       || mvm_goal(active_goal_.goal.type)
       || active_goal_.goal.type == goal_type::mvm_upgrade_station)
     && follower_.has_path();
+}
+
+Player* navbot_controller::melee_target() const
+{
+  if (!config.misc.automation.navbot_enabled || !active_goal_.valid ||
+      active_goal_.goal.type != goal_type::melee_chase || entity_list == nullptr) {
+    return nullptr;
+  }
+
+  Player* localplayer = entity_list->get_localplayer();
+  if (localplayer == nullptr || localplayer->get_weapon() == nullptr ||
+      !localplayer->get_weapon()->is_melee()) {
+    return nullptr;
+  }
+
+  Entity* target_entity = entity_list->entity_from_index(
+    static_cast<unsigned int>(active_goal_.goal.entity_index));
+  Player* target = target_entity != nullptr && target_entity->get_class_id() == class_id::PLAYER
+    ? reinterpret_cast<Player*>(target_entity)
+    : nullptr;
+  if (target == nullptr || target->is_dormant() || !target->is_alive() ||
+      target->get_team() == localplayer->get_team()) {
+    return nullptr;
+  }
+
+  return target;
 }
 
 void navbot_controller::ensure_started()

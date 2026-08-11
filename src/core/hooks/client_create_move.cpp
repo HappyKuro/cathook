@@ -148,7 +148,9 @@ void client_create_move_hook(void* me, int sequence_number, float input_sample_f
   if (!taunt_slide) {
     tickbase::on_create_move(user_cmd);
     anti_aim::on_create_move(user_cmd);
-    navbot::controller().apply_post_anti_aim(user_cmd);
+    if (!move_result.use_psilent) {
+      navbot::controller().apply_post_anti_aim(user_cmd);
+    }
   }
   aimbot::update_local_client_side_animation();
   update_verified_user_cmd(sequence_number, user_cmd);

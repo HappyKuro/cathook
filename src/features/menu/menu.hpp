@@ -930,7 +930,7 @@ static void draw_aimbot_content() {
     "Friends", "IPC bots", "Cloaked", "Invulnerable", "Party", "Unprioritized", "Invisible",
     "Dead ringer", "Vaccinator", "Disguised", "Taunting", "Team", "Sentry busters", "Unsimulated"
   };
-  const char* aim_mode_items[] = { "Plain", "Smooth", "Assistive", "Psilent", "Snap" };
+  const char* aim_mode_items[] = { "Plain", "Smooth", "Assistive", "Psilent" };
   const char* projectile_mode_items[] = { "FOV to current", "FOV to predicted", "Distance" };
   const char* projectile_prediction_items[] = { "Extrapolation", "Move simulation" };
   const char* projectile_position_items[] = { "Auto", "Feet", "Body", "Head" };
@@ -1065,10 +1065,6 @@ static void draw_aimbot_content() {
     cat_menu::combo("Splash policy", &config.aimbot.projectile_splash_policy,
       projectile_splash_items, IM_ARRAYSIZE(projectile_splash_items));
     cat_menu::slider_float("FOV", &config.aimbot.projectile_fov, 0.0f, 180.0f, "%.0f deg");
-    cat_menu::slider_float("Snap time", &config.aimbot.projectile_snap_time, 0.0f, 1.0f, "%.3fs");
-    cat_menu::checkbox("Smooth snap", &config.aimbot.projectile_snap_smooth);
-    cat_menu::slider_float("Snap smooth start", &config.aimbot.projectile_snap_smooth_start, 1.0f, 100.0f, "%.0f%%");
-    cat_menu::slider_float("Snap smooth end", &config.aimbot.projectile_snap_smooth_end, 1.0f, 100.0f, "%.0f%%");
     cat_menu::slider_int("Max simulation targets", &config.aimbot.projectile_max_sim_targets, 1, 6);
     cat_menu::slider_float("Max simulation time", &config.aimbot.projectile_max_sim_time, 0.25f, 5.0f, "%.2fs");
     cat_menu::slider_int("Multipoint scale", &config.aimbot.projectile_multipoint_scale, 50, 100);
@@ -1383,10 +1379,10 @@ static void draw_visual_groups_content() {
     cat_menu::checkbox("Override color", &group.esp.override_color);
     cat_menu::color_picker("ESP color", &group.esp.color);
     cat_menu::combo("Box type", (int*)&group.esp.box_style, box_type_items, IM_ARRAYSIZE(box_type_items));
-    cat_menu::slider_float("Fade near", &group.esp.start, 0.0f, 2048.0f, "%.0f HU");
-    cat_menu::slider_float("Fade far", &group.esp.end, 512.0f, 8192.0f, "%.0f HU");
+    cat_menu::slider_float("Start drawing", &group.esp.start, 0.0f, 8192.0f, "%.0f HU");
+    cat_menu::slider_float("End drawing", &group.esp.end, 0.0f, 8192.0f, "%.0f HU");
     if (group.esp.end < group.esp.start) group.esp.end = group.esp.start;
-    cat_menu::checkbox("Distance fade", &group.esp.smooth_alpha);
+    cat_menu::checkbox("Draw fade", &group.esp.smooth_alpha);
     int background_alpha = group.esp.background_alpha;
     cat_menu::slider_int("Background alpha", &background_alpha, 0, 255);
     group.esp.background_alpha = static_cast<uint8_t>(std::clamp(background_alpha, 0, 255));
@@ -1673,10 +1669,10 @@ static void draw_visual_groups_content_tfwin() {
     cat_menu::checkbox("Override color", &group.esp.override_color);
     cat_menu::color_picker("ESP color", &group.esp.color);
     cat_menu::combo("Box type", (int*)&group.esp.box_style, box_type_items, IM_ARRAYSIZE(box_type_items));
-    cat_menu::slider_float("Fade near", &group.esp.start, 0.0f, 2048.0f, "%.0f HU");
-    cat_menu::slider_float("Fade far", &group.esp.end, 512.0f, 8192.0f, "%.0f HU");
+    cat_menu::slider_float("Start drawing", &group.esp.start, 0.0f, 8192.0f, "%.0f HU");
+    cat_menu::slider_float("End drawing", &group.esp.end, 0.0f, 8192.0f, "%.0f HU");
     if (group.esp.end < group.esp.start) group.esp.end = group.esp.start;
-    cat_menu::checkbox("Distance fade", &group.esp.smooth_alpha);
+    cat_menu::checkbox("Draw fade", &group.esp.smooth_alpha);
     int background_alpha = group.esp.background_alpha;
     cat_menu::slider_int("Background alpha", &background_alpha, 0, 255);
     group.esp.background_alpha = static_cast<uint8_t>(std::clamp(background_alpha, 0, 255));
@@ -1955,7 +1951,18 @@ static void draw_navbot_content() {
     cat_menu::checkbox("Draw path boxes", &config.misc.automation.navbot_draw_path_boxes);
     cat_menu::color_picker("Path color", &config.misc.automation.navbot_path_color);
     cat_menu::checkbox("Don't path during warmup", &config.misc.automation.navbot_dont_path_during_warmup);
-    cat_menu::checkbox("Auto weapon", &config.misc.automation.navbot_auto_weapon);
+    static const char* navbot_weapon_selection_items[] = {
+      "Off",
+      "Auto",
+      "Primary",
+      "Secondary",
+      "Melee"
+    };
+    cat_menu::combo(
+        "Weapon selection",
+        (int*)&config.misc.automation.navbot_weapon_selection,
+        navbot_weapon_selection_items,
+        IM_ARRAYSIZE(navbot_weapon_selection_items));
     cat_menu::combo("Enemy stalk mode", (int*)&config.misc.automation.enemy_stalk_mode, enemy_stalk_mode_items, IM_ARRAYSIZE(enemy_stalk_mode_items));
     cat_menu::slider_float("Melee target range", &config.misc.automation.navbot_melee_target_range, 150.0f, 4000.0f, "%.0f HU");
     cat_menu::slider_float("Crumb blacklist", &config.misc.automation.navbot_crumb_blacklist_seconds, 50.0f, 150.0f, "%.0f s");

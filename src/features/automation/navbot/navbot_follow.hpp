@@ -39,7 +39,12 @@ private:
   void mark_crumb_reached(size_t crumb_index, float current_time);
   void advance_to_crumb(size_t crumb_index, float current_time);
   [[nodiscard]] size_t find_skip_ahead_crumb(Player* localplayer, const Vec3& local_origin) const;
-  bool try_unstuck(Player* localplayer, user_cmd* user_cmd, const crumb& current_crumb, float current_time, follower_tick_result& result);
+  bool try_unstuck(Player* localplayer,
+    user_cmd* user_cmd,
+    const crumb& current_crumb,
+    bool stuck_between_crumbs,
+    float current_time,
+    follower_tick_result& result);
 
   path_result active_path_{};
   std::vector<float> reached_crumb_times_{};

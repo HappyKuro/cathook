@@ -487,6 +487,17 @@ void remember_esp_bounds(Entity* entity, const esp_bounds& bounds)
   return true;
 }
 
+void forget_esp_entity_runtime_state(Entity* entity)
+{
+  const auto key = get_esp_entity_key(entity);
+  if (!is_valid_esp_entity_key(key)) {
+    return;
+  }
+
+  g_esp_smoothing_states.erase(key);
+  g_esp_bounds_cache.erase(key);
+}
+
 [[nodiscard]] esp_bounds smooth_esp_bounds(Entity* entity, const esp_bounds& target_bounds)
 {
   const auto key = get_esp_entity_key(entity);
@@ -588,10 +599,15 @@ void smooth_projected_box(Entity* entity, projected_box* box)
   }
 
   auto current_bounds = esp_bounds{};
-  if (!entity->is_dormant() && get_entity_screen_bounds(entity, &current_bounds) && is_reasonable_screen_bounds(current_bounds)) {
-    remember_esp_bounds(entity, current_bounds);
-    *bounds = current_bounds;
-    return true;
+  if (!entity->is_dormant()) {
+    if (get_entity_screen_bounds(entity, &current_bounds) && is_reasonable_screen_bounds(current_bounds)) {
+      remember_esp_bounds(entity, current_bounds);
+      *bounds = current_bounds;
+      return true;
+    }
+
+    forget_esp_entity_runtime_state(entity);
+    return false;
   }
 
   return get_cached_esp_bounds(entity, bounds);
@@ -1375,6 +1391,11 @@ void draw_offscreen_arrow(ImDrawList* draw_list, Entity* entity, Player* localpl
     return;
   }
 
+  const float alpha_scale = visual_groups::alpha_for_entity(entity, group.esp.start, group.esp.end, group.esp.smooth_alpha);
+  if (alpha_scale <= 0.0f) {
+    return;
+  }
+
   Vec3 screen{};
   if (!overlay_projection::world_to_screen(get_esp_draw_origin(entity), &screen)) {
     return;
@@ -1416,17 +1437,19 @@ void draw_offscreen_arrow(ImDrawList* draw_list, Entity* entity, Player* localpl
   const ImVec2 right(base.x - (perpendicular.x * arrow_width), base.y - (perpendicular.y * arrow_width));
 
   auto arrow_color = esp_color_for_entity(entity, group);
-  arrow_color.a = std::clamp(arrow_color.a, 0.0f, 1.0f);
+  arrow_color.a = std::clamp(arrow_color.a * alpha_scale, 0.0f, 1.0f);
   const auto color = to_imgui_color(arrow_color.to_RGBA());
+  const auto shadow_alpha = static_cast<int>(std::round(190.0f * alpha_scale));
   draw_list->AddTriangleFilled(
     ImVec2(tip.x + 1.0f, tip.y + 1.0f),
     ImVec2(left.x + 1.0f, left.y + 1.0f),
     ImVec2(right.x + 1.0f, right.y + 1.0f),
-    IM_COL32(0, 0, 0, 190));
+    IM_COL32(0, 0, 0, shadow_alpha));
   draw_list->AddTriangleFilled(tip, left, right, color);
 }
 
-void draw_world_line(ImDrawList* draw_list, const Vec3& start, const Vec3& end, ImU32 color, float thickness = 1.0f)
+void draw_world_line(ImDrawList* draw_list, const Vec3& start, const Vec3& end, ImU32 color,
+  float thickness = 1.0f, float alpha_scale = 1.0f)
 {
   if (draw_list == nullptr) {
     return;
@@ -1439,10 +1462,11 @@ void draw_world_line(ImDrawList* draw_list, const Vec3& start, const Vec3& end, 
     return;
   }
 
+  const auto shadow_alpha = static_cast<int>(std::round(190.0f * std::clamp(alpha_scale, 0.0f, 1.0f)));
   draw_list->AddLine(
     ImVec2(start_screen.x + 1.0f, start_screen.y + 1.0f),
     ImVec2(end_screen.x + 1.0f, end_screen.y + 1.0f),
-    IM_COL32(0, 0, 0, 190),
+    IM_COL32(0, 0, 0, shadow_alpha),
     thickness + 2.0f);
   draw_list->AddLine(ImVec2(start_screen.x, start_screen.y), ImVec2(end_screen.x, end_screen.y), color, thickness);
 }
@@ -1453,13 +1477,18 @@ void draw_player_sightline(ImDrawList* draw_list, Player* player, const visual_g
     return;
   }
 
+  const float alpha_scale = visual_groups::alpha_for_entity(player->to_entity(), group.esp.start, group.esp.end, group.esp.smooth_alpha);
+  if (alpha_scale <= 0.0f) {
+    return;
+  }
+
   Vec3 forward{};
   angle_vectors(player->get_eye_angles(), &forward, nullptr, nullptr);
   const Vec3 start = player->get_shoot_pos();
   const Vec3 end = start + (forward * 8192.0f);
   auto color = esp_color_for_entity(player->to_entity(), group);
-  color.a = std::min(color.a, 0.78f);
-  draw_world_line(draw_list, start, end, to_imgui_color(color.to_RGBA()), 1.5f);
+  color.a = std::min(color.a * alpha_scale, 0.78f);
+  draw_world_line(draw_list, start, end, to_imgui_color(color.to_RGBA()), 1.5f, alpha_scale);
 }
 
 [[nodiscard]] Vec3 entity_velocity(Entity* entity)
@@ -1477,6 +1506,11 @@ void draw_entity_trajectory(ImDrawList* draw_list, Entity* entity, const visual_
     return;
   }
 
+  const float alpha_scale = visual_groups::alpha_for_entity(entity, group.esp.start, group.esp.end, group.esp.smooth_alpha);
+  if (alpha_scale <= 0.0f) {
+    return;
+  }
+
   const Vec3 velocity = entity_velocity(entity);
   const float speed = std::sqrt((velocity.x * velocity.x) + (velocity.y * velocity.y) + (velocity.z * velocity.z));
   if (!std::isfinite(speed) || speed < 1.0f) {
@@ -1485,7 +1519,7 @@ void draw_entity_trajectory(ImDrawList* draw_list, Entity* entity, const visual_
 
   const Vec3 start = get_esp_draw_origin(entity);
   auto color = esp_color_for_entity(entity, group);
-  color.a = std::min(color.a, 0.82f);
+  color.a = std::min(color.a * alpha_scale, 0.82f);
   const ImU32 line_color = to_imgui_color(color.to_RGBA());
   constexpr int segments = 12;
   constexpr float step_time = 0.075f;
@@ -1498,7 +1532,7 @@ void draw_entity_trajectory(ImDrawList* draw_list, Entity* entity, const visual_
     }
 
     if ((group.trajectory & visual_group::trajectory_path) != 0 || (group.trajectory & visual_group::trajectory_trace) != 0) {
-      draw_world_line(draw_list, previous, current, line_color, 1.5f);
+      draw_world_line(draw_list, previous, current, line_color, 1.5f, alpha_scale);
     }
 
     previous = current;
@@ -1507,11 +1541,13 @@ void draw_entity_trajectory(ImDrawList* draw_list, Entity* entity, const visual_
   Vec3 end_screen{};
   if (overlay_projection::world_to_screen(previous, &end_screen)) {
     if ((group.trajectory & visual_group::trajectory_sphere) != 0) {
-      draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 5.0f, IM_COL32(0, 0, 0, 210), 18, 3.0f);
+      draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 5.0f,
+        IM_COL32(0, 0, 0, static_cast<int>(std::round(210.0f * alpha_scale))), 18, 3.0f);
       draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 4.0f, line_color, 18, 1.5f);
     }
     if ((group.trajectory & visual_group::trajectory_radius) != 0) {
-      draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 18.0f, IM_COL32(0, 0, 0, 160), 32, 3.0f);
+      draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 18.0f,
+        IM_COL32(0, 0, 0, static_cast<int>(std::round(160.0f * alpha_scale))), 32, 3.0f);
       draw_list->AddCircle(ImVec2(end_screen.x, end_screen.y), 17.0f, line_color, 32, 1.0f);
     }
   }
@@ -2357,7 +2393,8 @@ void draw_text_centered(ImDrawList* draw_list, const ImVec2& position, ImU32 col
 
   const auto text_size = ImGui::CalcTextSize(text.c_str());
   const auto text_pos = ImVec2(position.x - text_size.x * 0.5f, position.y);
-  draw_list->AddText(ImVec2(text_pos.x + 1.0f, text_pos.y + 1.0f), IM_COL32(0, 0, 0, 255), text.c_str());
+  const auto text_alpha = static_cast<int>((color >> IM_COL32_A_SHIFT) & 0xFF);
+  draw_list->AddText(ImVec2(text_pos.x + 1.0f, text_pos.y + 1.0f), IM_COL32(0, 0, 0, text_alpha), text.c_str());
   draw_list->AddText(text_pos, color, text.c_str());
 }
 
@@ -2384,7 +2421,8 @@ void draw_text(ImDrawList* draw_list, const ImVec2& position, ImU32 color, const
     return;
   }
 
-  draw_list->AddText(ImVec2(position.x + 1.0f, position.y + 1.0f), IM_COL32(0, 0, 0, 255), text.c_str());
+  const auto text_alpha = static_cast<int>((color >> IM_COL32_A_SHIFT) & 0xFF);
+  draw_list->AddText(ImVec2(position.x + 1.0f, position.y + 1.0f), IM_COL32(0, 0, 0, text_alpha), text.c_str());
   draw_list->AddText(position, color, text.c_str());
 }
 
@@ -2837,7 +2875,12 @@ void draw_player_class_icon(ImDrawList* draw_list, const esp_bounds& bounds, Pla
     bounds.center().x,
     bounds.min_y - text_lines_above - cathook_text_padding - (size * 0.5f));
 
-  draw_atlas_tile(draw_list, texture, tile_index, cathook_class_icon_tile_row, center, size);
+  const float alpha_scale = visual_groups::alpha_for_entity(player->to_entity(), group.esp.start, group.esp.end, group.esp.smooth_alpha);
+  if (alpha_scale <= 0.0f) {
+    return;
+  }
+  draw_atlas_tile(draw_list, texture, tile_index, cathook_class_icon_tile_row, center, size,
+    IM_COL32(255, 255, 255, static_cast<int>(std::round(255.0f * alpha_scale))));
 }
 
 void draw_player_head_emoji(ImDrawList* draw_list, const esp_bounds& bounds, Player* player, Player* localplayer, const visual_group& group)
@@ -2885,13 +2928,19 @@ void draw_player_head_emoji(ImDrawList* draw_list, const esp_bounds& bounds, Pla
     return;
   }
 
+  const float alpha_scale = visual_groups::alpha_for_entity(player->to_entity(), group.esp.start, group.esp.end, group.esp.smooth_alpha);
+  if (alpha_scale <= 0.0f) {
+    return;
+  }
+
   draw_atlas_tile(
     draw_list,
     texture,
     get_head_emoji_tile_column(group.esp.head_emoji_style),
     cathook_head_emoji_tile_row,
     smoothed_screen,
-    size);
+    size,
+    IM_COL32(255, 255, 255, static_cast<int>(std::round(255.0f * alpha_scale))));
 }
 
 [[nodiscard]] bool should_draw_player(Player* player, Player* localplayer)
@@ -3128,6 +3177,9 @@ void draw_group_entity_esp(ImDrawList* draw_list, Entity* entity, const visual_g
   if (!get_stable_entity_screen_bounds(entity, &bounds)) {
     auto screen = Vec3{};
     if (!overlay_projection::world_to_screen(get_esp_draw_origin(entity), &screen)) {
+      return;
+    }
+    if (!screen_point_inside_view(ImVec2(screen.x, screen.y))) {
       return;
     }
     const auto smoothed_screen = smooth_esp_point(entity, ImVec2(screen.x, screen.y), esp_smoothing_point::origin);

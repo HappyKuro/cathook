@@ -50,8 +50,7 @@ struct Aim {
     PLAIN,
     SMOOTH,
     ASSISTIVE,
-    PSILENT,
-    SNAP
+    PSILENT
   };
 
   enum class ProjectilePredictionMode {
@@ -152,10 +151,6 @@ struct Aim {
   ProjectilePredictionMode projectile_prediction_mode = ProjectilePredictionMode::EXTRAPOLATION;
   int projectile_aim_pos = 0;
   float projectile_fov = 30.0f;
-  float projectile_snap_time = 0.08f;
-  bool projectile_snap_smooth = false;
-  float projectile_snap_smooth_start = 20.0f;
-  float projectile_snap_smooth_end = 10.0f;
   int projectile_max_sim_targets = 1;
   float projectile_max_sim_time = 2.0f;
   int projectile_multipoint_scale = 70;
@@ -250,7 +245,7 @@ struct group_esp_settings {
   bool override_color = false;
   RGBA_float color = {.r = 1.0f, .g = 0.501960784f, .b = 0.0f, .a = 1.0f};
   esp_box_type box_style = esp_box_type::corner;
-  float start = 0.0f;
+  float start = 20.0f;
   float end = 8192.0f;
   bool smooth_alpha = false;
   uint8_t background_alpha = 180;
@@ -752,6 +747,14 @@ struct Misc {
       COMPLETE_MVM_SNIPER = 1
     };
 
+    enum class navbot_weapon_mode {
+      OFF = 0,
+      AUTO = 1,
+      PRIMARY = 2,
+      SECONDARY = 3,
+      MELEE = 4
+    };
+
     enum followbot_target_flags : uint32_t {
       followbot_teammates = 1u << 0,
       followbot_enemies = 1u << 1
@@ -894,7 +897,7 @@ struct Misc {
     bool navbot_dont_path_during_warmup = false;
     bool navbot_look_at_path = false;
     bool navbot_look_at_path_silent = false;
-    bool navbot_auto_weapon = true;
+    navbot_weapon_mode navbot_weapon_selection = navbot_weapon_mode::AUTO;
     navbot_enemy_stalk_mode enemy_stalk_mode = navbot_enemy_stalk_mode::DEFAULT;
     float navbot_melee_target_range = 600.0f;
     int navbot_look_at_path_speed = 5;

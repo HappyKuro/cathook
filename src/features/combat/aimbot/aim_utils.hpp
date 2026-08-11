@@ -2137,6 +2137,10 @@ inline bool aimbot_trace_melee_swing(Player* localplayer,
     return true;
   }
 
+  if (line_trace.all_solid || line_trace.start_solid || line_trace.fraction < 1.0f) {
+    return false;
+  }
+
   trace_t hull_trace{};
   if (!run_trace(&geometry.hull_mins, &geometry.hull_maxs, &hull_trace)) {
     return false;

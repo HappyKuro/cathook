@@ -11,6 +11,7 @@
 #include "melee_aim.hpp"
 #include "core/entity_cache.hpp"
 #include "features/combat/backtrack/backtrack.hpp"
+#include "features/automation/navbot/navbot_controller.hpp"
 
 namespace aim_targeting {
 
@@ -155,6 +156,9 @@ inline aimbot_candidate find_best_candidate(Player* localplayer,
   }
 
   const bool hitscan_ready_selection = !aimbot_is_melee_weapon(weapon);
+  Player* navbot_melee_target = aimbot_is_melee_weapon(weapon)
+    ? navbot::controller().melee_target()
+    : nullptr;
   const std::size_t max_target_count = static_cast<std::size_t>(std::clamp(config.aimbot.max_targets, 1, 6));
   std::array<target_hint, 6> target_hints{};
   std::size_t target_hint_count = 0;
@@ -197,7 +201,8 @@ inline aimbot_candidate find_best_candidate(Player* localplayer,
 
   for (const entity_cache_player_entry& entry : entity_cache_players()) {
     Player* player = entry.player;
-    if (!target_hint_selected(player, target_hints, target_hint_count)) continue;
+    const bool forced_navbot_target = player == navbot_melee_target;
+    if (!forced_navbot_target && !target_hint_selected(player, target_hints, target_hint_count)) continue;
 
     aimbot_candidate candidate = aimbot_is_melee_weapon(weapon)
       ? melee_aim_find_candidate(localplayer, weapon, player, user_cmd, original_view_angles)
@@ -220,7 +225,8 @@ inline aimbot_candidate find_best_candidate(Player* localplayer,
 
     if (candidate.visible) ++aim_state::scan.candidates_visible;
     const float fov_limit = aimbot_fov_limit(candidate.preferred ? 1.35f : 1.0f);
-    if (!candidate.visible || aimbot_fov_exceeds_limit(candidate.fov, candidate.preferred ? 1.35f : 1.0f)) {
+    if (!candidate.visible || (!forced_navbot_target &&
+        aimbot_fov_exceeds_limit(candidate.fov, candidate.preferred ? 1.35f : 1.0f))) {
       aim_state::record_reject(aim_state::make_candidate_reject_debug(
         candidate,
         candidate.visible ? aimbot_reject_reason::fov : aimbot_reject_reason::not_visible,
@@ -228,7 +234,7 @@ inline aimbot_candidate find_best_candidate(Player* localplayer,
       continue;
     }
 
-    if (aimbot_candidate_better(candidate, best_candidate)) {
+    if (forced_navbot_target || aimbot_candidate_better(candidate, best_candidate)) {
       best_candidate = candidate;
     }
 
@@ -241,7 +247,7 @@ inline aimbot_candidate find_best_candidate(Player* localplayer,
 
   const aimbot_candidate non_player_candidate = find_best_non_player_candidate(
     localplayer, weapon, original_view_angles);
-  if (aimbot_candidate_better(non_player_candidate, best_candidate)) {
+  if (navbot_melee_target == nullptr && aimbot_candidate_better(non_player_candidate, best_candidate)) {
     best_candidate = non_player_candidate;
   }
 

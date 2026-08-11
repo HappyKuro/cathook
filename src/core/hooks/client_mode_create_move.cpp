@@ -242,7 +242,9 @@ bool client_mode_create_move_hook(void* me, float sample_time, user_cmd* user_cm
   update_player_head_emoji_cache();
 
   const move_features_result move_result = run_move_features(user_cmd);
-  navbot::controller().apply_post_anti_aim(user_cmd);
+  if (!move_result.use_psilent) {
+    navbot::controller().apply_post_anti_aim(user_cmd);
+  }
   if (move_result.use_psilent || navbot::controller().has_silent_path_look()) {
     return false;
   }

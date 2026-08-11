@@ -112,9 +112,12 @@ inline decision resolve(Player* localplayer, Weapon* weapon, const aimbot_candid
   }
 
   const bool selected_target_needs_scope = candidate.entity != nullptr &&
+    target_within_auto_scope_range(localplayer, candidate.entity) &&
     policy_requires_scope(localplayer, weapon);
 
-  const bool headshot_wait_needs_scope = is_sniper_rifle(localplayer, weapon) &&
+  const bool headshot_wait_needs_scope = candidate.entity != nullptr &&
+    target_within_auto_scope_range(localplayer, candidate.entity) &&
+    is_sniper_rifle(localplayer, weapon) &&
     weapon->get_weapon_id() != TF_WEAPON_SNIPERRIFLE_CLASSIC &&
     aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot);
   const bool should_scope = selected_target_needs_scope ||

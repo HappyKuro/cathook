@@ -535,6 +535,8 @@ void apply_auto_shoot(aimbot_run_context& ctx) {
 
 void apply_fire_state(aimbot_run_context& ctx) {
   const bool firing = (ctx.cmd->buttons & IN_ATTACK) != 0 || ctx.auto_shoot.release_attack;
+  const bool melee_swing_pending = ctx.melee && !ctx.manual_attack &&
+    melee_swing_active(ctx.local, ctx.weapon);
   const bool visible_steering = aimbot_mode_uses_visible_steering() || ctx.manual_attack;
 
   if (ctx.target.player != nullptr) {
@@ -549,7 +551,7 @@ void apply_fire_state(aimbot_run_context& ctx) {
     ctx.cmd->view_angles = ctx.applied_angles;
   } else if (firing && ctx.hitscan && ctx.hitscan_fire.ready) {
     ctx.cmd->view_angles = ctx.hitscan_fire.command_angles;
-  } else if (firing) {
+  } else if (firing || melee_swing_pending) {
     ctx.cmd->view_angles = ctx.target_angles;
   }
 
@@ -566,7 +568,8 @@ void apply_fire_state(aimbot_run_context& ctx) {
     note_shot_diagnostic(ctx);
   }
 
-  ctx.psilent = config.aimbot.aim_mode == Aim::AimMode::PSILENT && firing && !ctx.manual_attack;
+  ctx.psilent = config.aimbot.aim_mode == Aim::AimMode::PSILENT &&
+    (firing || melee_swing_pending) && !ctx.manual_attack;
   ctx.debug.final_command_angles = ctx.cmd->view_angles;
   if (config.aimbot.aim_mode == Aim::AimMode::PSILENT && !ctx.psilent && !ctx.manual_attack) {
     ctx.cmd->view_angles = ctx.source_angles;
@@ -806,7 +809,6 @@ aimbot_run_result run(user_cmd* cmd, const Vec3& original_view_angles) {
       if ((ctx.cmd->buttons & IN_ATTACK) == 0) {
         projectile_aim::reset_charge_tracking();
       }
-      projectile_aim::reset_snap();
     }
     return ctx.finish(aimbot_debug_reason::no_target);
   }

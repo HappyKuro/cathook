@@ -1235,30 +1235,21 @@ bool enemy_goal_has_line_of_fire(Player* localplayer, Player* enemy, const Vec3&
   return false;
 }
 
-constexpr float navbot_melee_vertical_limit = 80.0f;
-constexpr float navbot_melee_switch_distance = 125.0f;
-
 bool navbot_melee_chase_allowed(Player* localplayer, Player* enemy, float distance)
 {
   if (localplayer == nullptr || enemy == nullptr ||
       distance > std::clamp(config.misc.automation.navbot_melee_target_range, 150.0f, 4000.0f) ||
-      std::fabs(enemy->get_origin().z - localplayer->get_origin().z) > navbot_melee_vertical_limit)
+      std::fabs(enemy->get_origin().z - localplayer->get_origin().z) > melee_chase_vertical_limit)
   {
     return false;
   }
 
-  auto* weapon = localplayer->get_weapon();
-  if (weapon != nullptr && weapon->is_melee())
-  {
-    return true;
-  }
-
   if (localplayer->get_tf_class() == tf_class::SPY)
   {
-    return localplayer->in_cond(TF_COND_STEALTHED) || distance <= 250.0f;
+    return localplayer->in_cond(TF_COND_STEALTHED) || distance <= melee_chase_spy_approach_distance;
   }
 
-  return distance <= navbot_melee_switch_distance;
+  return distance <= melee_chase_switch_distance;
 }
 
 Vec3 navbot_melee_destination(Player* localplayer, Player* enemy)

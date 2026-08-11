@@ -22,6 +22,7 @@ V  o o  V  file: src/features/automation/navbot/navbot_controller.hpp
 
 struct user_cmd;
 class GameEvent;
+class Player;
 
 namespace navbot
 {
@@ -40,7 +41,9 @@ public:
   [[nodiscard]] bool should_suppress_aimbot() const;
   [[nodiscard]] bool should_prioritize_danger_movement() const;
   [[nodiscard]] bool should_prioritize_melee_movement() const;
+  [[nodiscard]] Player* melee_target() const;
   [[nodiscard]] bool has_silent_path_look() const;
+  [[nodiscard]] Vec3 silent_path_look_angles() const;
 
 private:
   struct crumb_failure_state
@@ -109,6 +112,7 @@ private:
   crumb_failure_state crumb_failure_{};
   bool suppress_aimbot_for_reload_ = false;
   bool silent_path_look_ = false;
+  Vec3 silent_path_look_angles_{};
   int last_captured_point_index_ = -1;
   bool round_started_ = false;
   bool setup_finished_ = false;

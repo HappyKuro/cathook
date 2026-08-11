@@ -1387,17 +1387,6 @@ inline bool candidate_better(const aimbot_candidate& left, const aimbot_candidat
 
 }
 
-struct snap_state {
-  Entity* entity = nullptr;
-  Vec3 start_angles{};
-  Vec3 target_angles{};
-  float start_time = 0.0f;
-  float end_time = 0.0f;
-  bool active = false;
-};
-
-inline snap_state projectile_snap{};
-
 struct charge_state {
   Weapon* weapon = nullptr;
   int weapon_def_id = TF_WEAPON_NONE;
@@ -1463,50 +1452,10 @@ inline bool cancel_charge_if_needed(user_cmd* cmd, Player* local, Weapon* weapon
   return true;
 }
 
-inline void reset_snap() {
-  projectile_snap = {};
-}
-
 inline float current_time(Player* local) {
   return global_vars != nullptr
     ? global_vars->curtime
     : (local != nullptr ? local->get_tickbase() * detail::interval() : 0.0f);
-}
-
-inline Vec3 snap_angles(Player* local, const Vec3& original_view_angles,
-  Entity* entity, const Vec3& target_angles, bool& complete) {
-  if (!projectile_snap.active || projectile_snap.entity != entity) {
-    projectile_snap.entity = entity;
-    projectile_snap.start_angles = original_view_angles;
-    projectile_snap.target_angles = target_angles;
-    projectile_snap.start_time = current_time(local);
-    projectile_snap.end_time = projectile_snap.start_time +
-      std::clamp(config.aimbot.projectile_snap_time, 0.0f, 1.0f);
-    projectile_snap.active = true;
-  } else {
-    projectile_snap.target_angles = target_angles;
-  }
-
-  const float duration = projectile_snap.end_time - projectile_snap.start_time;
-  const float progress = duration <= 0.0001f ? 1.0f : std::clamp(
-    (current_time(local) - projectile_snap.start_time) / duration, 0.0f, 1.0f);
-  Vec3 result = aimbot_lerp_angles(
-    projectile_snap.start_angles, projectile_snap.target_angles, progress);
-
-  if (config.aimbot.projectile_snap_smooth) {
-    const float smooth_start = std::lerp(2.0f, 20.0f,
-      std::clamp((config.aimbot.projectile_snap_smooth_start - 1.0f) / 99.0f, 0.0f, 1.0f));
-    const float smooth_end = std::lerp(2.0f, 20.0f,
-      std::clamp((config.aimbot.projectile_snap_smooth_end - 1.0f) / 99.0f, 0.0f, 1.0f));
-    const float smooth = std::lerp(smooth_start, smooth_end, progress);
-    const Vec3 delta = aimbot_normalize_angle_delta(result, original_view_angles);
-    if (smooth > 0.0f) {
-      result = aimbot_clamp_angles(original_view_angles + (delta * (1.0f / smooth)));
-    }
-  }
-
-  complete = progress >= 1.0f;
-  return result;
 }
 
 struct apply_result {
@@ -1809,16 +1758,10 @@ inline apply_result apply(user_cmd* cmd, Player* local, Weapon* weapon,
 
   Vec3 target_angles = target.command_angles;
   const Aim::AimMode aim_mode = static_cast<Aim::AimMode>(std::clamp(
-    static_cast<int>(config.aimbot.aim_mode), 0, 4));
-  bool snap_complete = true;
-  if (aim_mode != Aim::AimMode::SNAP) {
-    reset_snap();
-  }
+    static_cast<int>(config.aimbot.aim_mode), 0, 3));
   if (config.aimbot.projectile_smooth_flamethrowers_active && weapon->is_flamethrower()) {
     target_angles = aimbot_lerp_angles(original_view_angles, target_angles,
       std::clamp(config.aimbot.projectile_smooth_flamethrowers / 100.0f, 0.0f, 1.0f));
-  } else if (aim_mode == Aim::AimMode::SNAP) {
-    target_angles = snap_angles(local, original_view_angles, target.entity, target_angles, snap_complete);
   } else if (aim_mode == Aim::AimMode::SMOOTH || aim_mode == Aim::AimMode::ASSISTIVE) {
     const aimbot::aimbot_state& state = aimbot::current_state();
     target_angles = aimbot_apply_mode_angles(
@@ -1829,19 +1772,8 @@ inline apply_result apply(user_cmd* cmd, Player* local, Weapon* weapon,
       target);
   }
 
-  const bool snap_ready = aim_mode != Aim::AimMode::SNAP || snap_complete;
-  bool release_cancelled = false;
-  if (manual_bow_release && !snap_ready &&
-      projectile_modifier_enabled(Aim::projectile_mod_cancel_charge)) {
-
-    cmd->buttons |= IN_ATTACK2;
-    cmd->buttons &= ~IN_ATTACK;
-    projectile_charge_state = {};
-    manual_bow_release = false;
-    release_cancelled = true;
-  }
-  const bool manual_release_ready = manual_bow_release && snap_ready;
-  const bool release_requested = !manual_attack && config.aimbot.auto_shoot && has_ammo && snap_ready &&
+  const bool manual_release_ready = manual_bow_release;
+  const bool release_requested = !manual_attack && config.aimbot.auto_shoot && has_ammo &&
     (charged || cannon_detonating);
   if (release_requested || manual_release_ready) {
 
@@ -1851,24 +1783,24 @@ inline apply_result apply(user_cmd* cmd, Player* local, Weapon* weapon,
     }
   }
   else if (!manual_attack && config.aimbot.auto_shoot && has_ammo && !charged && !cannon_detonating &&
-      !manual_bow_release && snap_ready) {
+      !manual_bow_release) {
     cmd->buttons |= attack_button;
     result.requested_shot = true;
   }
 
   if (is_bow(weapon) && projectile_modifier_enabled(Aim::projectile_mod_charge_weapon) &&
       !charged && same_charge_weapon(weapon) && projectile_charge_state.last_aiming &&
-      projectile_charge_state.last_attack && snap_ready && !manual_release_ready) {
+      projectile_charge_state.last_attack && !manual_release_ready) {
     cmd->buttons |= IN_ATTACK;
   }
 
-  if (!has_ammo || (!snap_ready && !manual_attack)) {
+  if (!has_ammo) {
     cmd->buttons &= ~attack_button;
   }
 
   const bool firing = (cmd->buttons & attack_button) != 0;
-  const bool shot_command = !release_cancelled && (firing || release_requested || manual_bow_release);
-  result.attack_ready = can_attack && shot_command && snap_complete;
+  const bool shot_command = firing || release_requested || manual_bow_release;
+  result.attack_ready = can_attack && shot_command;
   result.psilent = aim_mode == Aim::AimMode::PSILENT && shot_command && !manual_attack;
 
   if (config.aimbot.spread_compensation && shot_command) {
@@ -1885,12 +1817,10 @@ inline apply_result apply(user_cmd* cmd, Player* local, Weapon* weapon,
     engine->set_view_angles(cmd->view_angles);
   }
 
-  if (!release_cancelled) {
-    projectile_charge_state.weapon = weapon;
-    projectile_charge_state.weapon_def_id = weapon->get_def_id();
-    projectile_charge_state.last_attack = (cmd->buttons & IN_ATTACK) != 0;
-    projectile_charge_state.last_aiming = true;
-  }
+  projectile_charge_state.weapon = weapon;
+  projectile_charge_state.weapon_def_id = weapon->get_def_id();
+  projectile_charge_state.last_attack = (cmd->buttons & IN_ATTACK) != 0;
+  projectile_charge_state.last_aiming = true;
 
   return result;
 }

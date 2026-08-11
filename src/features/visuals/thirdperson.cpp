@@ -12,6 +12,7 @@ V  o o  V  file: src/features/visuals/thirdperson.cpp
 #include "imgui/imgui.h"
 #include "core/math/math.hpp"
 #include "features/combat/anti_aim/anti_aim.hpp"
+#include "features/automation/navbot/navbot_controller.hpp"
 #include "features/menu/config.hpp"
 #include "features/visuals/overlay_projection.hpp"
 #include "games/tf2/sdk/entities/player.hpp"
@@ -164,8 +165,13 @@ void begin_render_angles()
   }
 
   auto* localplayer = get_localplayer();
-  if (!is_enabled_for(localplayer) || localplayer->in_cond(TF_COND_TAUNTING) ||
-      !anti_aim::has_visual_angles()) {
+  if (!is_enabled_for(localplayer) || localplayer->in_cond(TF_COND_TAUNTING)) {
+    return;
+  }
+
+  const bool has_anti_aim_angles = anti_aim::has_visual_angles();
+  const bool has_silent_path_angles = navbot::controller().has_silent_path_look();
+  if (!has_anti_aim_angles && !has_silent_path_angles) {
     return;
   }
 
@@ -174,7 +180,9 @@ void begin_render_angles()
   render_angles.original_local_angles = localplayer->get_local_eye_angles();
   render_angles.active = true;
 
-  Vec3 visible_angles = anti_aim::real_angles();
+  Vec3 visible_angles = has_anti_aim_angles
+    ? anti_aim::real_angles()
+    : navbot::controller().silent_path_look_angles();
   visible_angles.z = 0.0f;
   localplayer->set_eye_angles(visible_angles);
   localplayer->set_local_eye_angles(visible_angles);

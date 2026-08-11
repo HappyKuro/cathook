@@ -191,6 +191,29 @@ bool is_transition_passable(const path_result& path, size_t crumb_index, Player*
   return trace_navigation_ray(localplayer, path.crumbs[crumb_index].world, path.crumbs[crumb_index + 1].world);
 }
 
+bool is_between_crumbs(const path_result& path, size_t crumb_index, const Vec3& origin)
+{
+  if (crumb_index + 1 >= path.crumbs.size()
+    || is_crumb_reached(path, crumb_index, origin)
+    || is_crumb_reached(path, crumb_index + 1, origin))
+  {
+    return false;
+  }
+
+  const auto& start = path.crumbs[crumb_index].world;
+  const auto& end = path.crumbs[crumb_index + 1].world;
+  auto fraction = 0.0f;
+  const auto segment_distance_sq = distance_sq_to_segment_2d(origin, start, end, &fraction);
+  if (fraction <= 0.1f || fraction >= 0.9f
+    || segment_distance_sq > crumb_skip_segment_distance * crumb_skip_segment_distance)
+  {
+    return false;
+  }
+
+  const auto segment_z = segment_z_at_fraction(start, end, fraction);
+  return std::fabs(origin.z - segment_z) <= crumb_reach_vertical_tolerance;
+}
+
 bool navbot_requires_jump(Player* localplayer, const Vec3& target)
 {
   if (localplayer == nullptr)
@@ -508,7 +531,12 @@ const std::vector<float>& navbot_follow::reached_crumb_times() const
   return reached_crumb_times_;
 }
 
-bool navbot_follow::try_unstuck(Player* localplayer, user_cmd* user_cmd, const crumb& current_crumb, float current_time, follower_tick_result& result)
+bool navbot_follow::try_unstuck(Player* localplayer,
+  user_cmd* user_cmd,
+  const crumb& current_crumb,
+  bool stuck_between_crumbs,
+  float current_time,
+  follower_tick_result& result)
 {
   if (localplayer == nullptr || user_cmd == nullptr)
   {
@@ -557,7 +585,9 @@ bool navbot_follow::try_unstuck(Player* localplayer, user_cmd* user_cmd, const c
 
   auto local_origin = localplayer->get_origin();
   auto height_delta = current_crumb.world.z - local_origin.z;
-  if (height_delta > player_step_height || current_time - last_progress_time_ >= stuck_fail_time)
+  if (height_delta > player_step_height
+    || stuck_between_crumbs
+    || current_time - last_progress_time_ >= stuck_fail_time)
   {
     user_cmd->buttons |= IN_JUMP;
     if (height_delta > jump_trigger_height)
@@ -658,6 +688,10 @@ follower_tick_result navbot_follow::tick(Player* localplayer, user_cmd* user_cmd
 
   auto current_target = active_path_.crumbs[current_crumb_index_].world;
   auto current_distance_sq = distance_sq_2d_follow(local_origin, current_target);
+  const auto velocity = localplayer->get_velocity();
+  const auto planar_speed = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+  const auto stuck_between_crumbs = planar_speed < stuck_progress_speed_threshold
+    && is_between_crumbs(active_path_, current_crumb_index_, local_origin);
 
   if (current_time - last_vischeck_time_ >= 0.25f)
   {
@@ -669,7 +703,9 @@ follower_tick_result navbot_follow::tick(Player* localplayer, user_cmd* user_cmd
     }
   }
 
-  if (last_progress_distance_sq_ <= 0.0f || current_distance_sq + 64.0f < last_progress_distance_sq_)
+  const auto making_meaningful_progress = planar_speed >= stuck_progress_speed_threshold;
+  if (making_meaningful_progress
+    && (last_progress_distance_sq_ <= 0.0f || current_distance_sq + 64.0f < last_progress_distance_sq_))
   {
     last_progress_distance_sq_ = current_distance_sq;
     last_progress_time_ = current_time;
@@ -703,7 +739,12 @@ follower_tick_result navbot_follow::tick(Player* localplayer, user_cmd* user_cmd
 
   apply_walk_towards(localplayer, user_cmd, current_target);
 
-  if (try_unstuck(localplayer, user_cmd, active_path_.crumbs[current_crumb_index_], current_time, result))
+  if (try_unstuck(localplayer,
+      user_cmd,
+      active_path_.crumbs[current_crumb_index_],
+      stuck_between_crumbs,
+      current_time,
+      result))
   {
     result.has_movement = true;
     return result;
