@@ -170,9 +170,11 @@ inline unsigned int hitscan_aim_trace_mask() {
 inline hitscan_settings_view hitscan_aim_settings(Weapon* weapon) {
   return {
     .hitbox_mask = hitscan_aim_effective_hitbox_mask(weapon),
-    .wait_for_headshot = aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_headshot),
-    .wait_for_charge = aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_charge),
-    .body_aim_if_lethal = aimbot_modifier_enabled(Aim::hitscan_mod_body_aim_if_lethal),
+    .wait_for_headshot = hitscan_aim_waits_for_headshot(weapon),
+    .wait_for_charge = weapon != nullptr && weapon->is_sniper_rifle() &&
+      aimbot_modifier_enabled(Aim::hitscan_mod_wait_for_charge),
+    .body_aim_if_lethal = weapon != nullptr && weapon->is_headshot_weapon() &&
+      aimbot_modifier_enabled(Aim::hitscan_mod_body_aim_if_lethal),
     .spread_compensation = config.aimbot.spread_compensation,
     .multipoint_scale = std::clamp(config.aimbot.multipoint_scale, 0.0f, 100.0f)
   };

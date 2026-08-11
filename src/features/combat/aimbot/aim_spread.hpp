@@ -354,7 +354,9 @@ inline hitscan_fire_solution prepare_hitscan_fire_solution(Player* localplayer,
 
   for (const auto& [unused_score, pellet_index] : pellet_order) {
     (void)unused_score;
-    const Vec3& spread_offset = spread_offsets[static_cast<std::size_t>(pellet_index)];
+    const Vec3 spread_offset = use_spread
+      ? spread_offsets[static_cast<std::size_t>(pellet_index)]
+      : Vec3{};
     if (use_spread && !aimbot_vec3_is_finite(spread_offset)) {
       solution.seed_missing = true;
       break;

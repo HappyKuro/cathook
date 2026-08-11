@@ -219,6 +219,7 @@ inline auto build_aimbot_debug_rows() -> owned_indicator_rows
   add("res angle", format_float(state.resolver_yaw, "%.1f") + " / " + format_float(state.resolver_pitch, "%.1f"));
   add("res hit/miss", std::to_string(state.resolver_hits) + " / " + std::to_string(state.resolver_misses));
   add("scope/head", std::string(bool_text(state.scoped_ready)) + " / " + bool_text(state.headshot_ready));
+  add("gates a/c/t/s/p", std::string(bool_text(state.attack_gate_ready)) + " / " + bool_text(state.charge_ready) + " / " + bool_text(state.trace_ready) + " / " + bool_text(state.settled) + " / " + bool_text(state.primary_ready));
   add("spread", format_float(state.spread, "%.4f") + (state.spread_compensated ? " comp" : ""));
   add("pellet", std::to_string(state.pellet_index) + " / " + std::to_string(state.pellet_count));
   add("tick/fov", std::to_string(state.tick_count) + " / " + format_float(state.fov, "%.2f"));

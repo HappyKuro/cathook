@@ -34,11 +34,6 @@ bool truthy_material_key(const std::string& vmt, const char* key) {
 
 std::string normalize_vmt(std::string vmt) {
   const std::string lower = lower_copy(vmt);
-  if (lower.find("$model") != std::string::npos &&
-      (lower.find("vertexlitgeneric") == std::string::npos && lower.find("unlitgeneric") == std::string::npos ||
-       lower.find("$basetexture") != std::string::npos)) {
-    return vmt;
-  }
   const std::size_t closing_brace = vmt.rfind('}');
   if (closing_brace == std::string::npos) return vmt;
   std::string additions{};
@@ -76,6 +71,7 @@ void material_manager::release_material(material_definition& definition) {
   definition.material = nullptr;
   definition.phong_tint = nullptr;
   definition.envmap_tint = nullptr;
+  definition.variables_initialized = false;
 }
 
 void material_manager::retire_material(material_definition& definition) {
@@ -91,12 +87,6 @@ void material_manager::initialize_material(material_definition& definition) {
   definition.material = create_material(
     "monolilth_material_" + std::to_string(++generation_) + "_" + definition.name, definition.vmt);
   if (definition.material == nullptr) return;
-
-  bool found = false;
-  definition.phong_tint = definition.material->find_var("$phongtint", &found, false);
-  if (!found) definition.phong_tint = nullptr;
-  definition.envmap_tint = definition.material->find_var("$envmaptint", &found, false);
-  if (!found) definition.envmap_tint = nullptr;
 }
 
 void material_manager::store_material(const std::string& name, const std::string& vmt, const bool locked) {
@@ -104,6 +94,9 @@ void material_manager::store_material(const std::string& name, const std::string
   definition.name = name;
   definition.vmt = normalize_vmt(vmt);
   definition.locked = locked;
+  const std::string lower_vmt = lower_copy(definition.vmt);
+  definition.needs_tint_variables = lower_vmt.find("$phongtint") != std::string::npos ||
+    lower_vmt.find("$envmaptint") != std::string::npos;
   definition.invert_cull = truthy_material_key(vmt, "$invertcull");
   definition.block_occluded = truthy_material_key(vmt, "$blockoccluded");
   materials_.insert_or_assign(name, std::move(definition));
@@ -112,7 +105,7 @@ void material_manager::store_material(const std::string& name, const std::string
 void material_manager::add_builtin_materials() {
   store_material("None", "\"UnlitGeneric\"\n{\n\t$color2 \"[0 0 0]\"\n\t$additive \"1\"\n}", true);
   store_material("Flat", "\"UnlitGeneric\"\n{\n\t$basetexture \"white\"\n}", true);
-  store_material("Shaded", "\"VertexLitGeneric\"\n{\n\t$basetexture \"white\"\n}", true);
+  store_material("Shaded", "\"VertexLitGeneric\"\n{\n\t$basetexture \"white\"\n\t$model \"1\"\n}", true);
   store_material("Wireframe", "\"UnlitGeneric\"\n{\n\t$basetexture \"white\"\n\t$wireframe \"1\"\n}", true);
   store_material("Fresnel", "\"VertexLitGeneric\"\n{\n\t$basetexture \"white\"\n\t$bumpmap \"models/player/shared/shared_normal\"\n\t$color2 \"[0 0 0]\"\n\t$additive \"1\"\n\t$phong \"1\"\n\t$phongfresnelranges \"[0 0.5 1]\"\n\t$envmap \"skybox/sky_dustbowl_01\"\n\t$envmapfresnel \"1\"\n}", true);
   store_material("Shine", "\"VertexLitGeneric\"\n{\n\t$additive \"1\"\n\t$envmap \"cubemaps/cubemap_sheen002.hdr\"\n\t$envmaptint \"[1 1 1]\"\n}", true);
@@ -180,11 +173,13 @@ void material_manager::abandon() {
     definition.material = nullptr;
     definition.phong_tint = nullptr;
     definition.envmap_tint = nullptr;
+    definition.variables_initialized = false;
   }
   for (auto& definition : retired_materials_) {
     definition.material = nullptr;
     definition.phong_tint = nullptr;
     definition.envmap_tint = nullptr;
+    definition.variables_initialized = false;
   }
   materials_.clear();
   retired_materials_.clear();
@@ -274,15 +269,50 @@ bool material_manager::remove(const std::string& name) {
   return std::filesystem::remove(directory() / (name + ".vmt"), error) && !error;
 }
 
-void material_manager::set_color(const material_definition* definition, const RGBA_float& color) const {
+Material* material_manager::create_runtime_material(const std::string& name, const std::string& vmt) {
+  const std::unique_lock lock{mutex_};
+  return create_material(name, vmt);
+}
+
+void material_manager::set_color(material_definition* definition, const RGBA_float& color) {
   if (render_view == nullptr) return;
   const auto resolved_color = color.resolved();
   render_view->set_color_modulation(&resolved_color);
   render_view->set_blend(resolved_color.a);
-  if (definition != nullptr) {
-    if (definition->phong_tint != nullptr) definition->phong_tint->set_vec_value(color);
-    if (definition->envmap_tint != nullptr) definition->envmap_tint->set_vec_value(color);
+  if (definition == nullptr || definition->material == nullptr || !definition->needs_tint_variables ||
+      definition->variables_initialized) {
+    if (definition != nullptr && definition->variables_initialized) {
+      if (definition->phong_tint != nullptr) definition->phong_tint->set_vec_value(color);
+      if (definition->envmap_tint != nullptr) definition->envmap_tint->set_vec_value(color);
+    }
+    return;
   }
+
+  MaterialVar* phong_tint = nullptr;
+  MaterialVar* envmap_tint = nullptr;
+  {
+    const std::unique_lock lock{mutex_};
+    auto iterator = materials_.find(definition->name);
+    material_definition* stored = iterator != materials_.end() && iterator->second.material == definition->material
+      ? &iterator->second
+      : definition;
+    if (!stored->variables_initialized) {
+      bool found = false;
+      stored->phong_tint = stored->material->find_var("$phongtint", &found, false);
+      if (!found) stored->phong_tint = nullptr;
+      stored->envmap_tint = stored->material->find_var("$envmaptint", &found, false);
+      if (!found) stored->envmap_tint = nullptr;
+      stored->variables_initialized = true;
+    }
+    definition->phong_tint = stored->phong_tint;
+    definition->envmap_tint = stored->envmap_tint;
+    definition->variables_initialized = true;
+    phong_tint = definition->phong_tint;
+    envmap_tint = definition->envmap_tint;
+  }
+
+  if (phong_tint != nullptr) phong_tint->set_vec_value(color);
+  if (envmap_tint != nullptr) envmap_tint->set_vec_value(color);
 }
 
 bool material_manager::loaded() const {

@@ -2540,8 +2540,7 @@ inline bool aimbot_sniper_headshot_ready(Player* localplayer, Weapon* weapon) {
 
   if (weapon->is_sniper_rifle() &&
       weapon->get_weapon_id() != TF_WEAPON_SNIPERRIFLE_CLASSIC &&
-      (!aimbot_sniper_scope_confirmed(localplayer) ||
-        !aimbot_sniper_scope_time_ready(localplayer))) {
+      !aimbot_sniper_scope_confirmed(localplayer)) {
     return false;
   }
 
@@ -2567,7 +2566,9 @@ inline bool aimbot_sniper_headshot_ready(Player* localplayer, Weapon* weapon) {
     return true;
   }
 
-  return aimbot_sniper_scope_time_ready(localplayer);
+  return !weapon->is_sniper_rifle() ||
+    weapon->get_weapon_id() == TF_WEAPON_SNIPERRIFLE_CLASSIC ||
+    aimbot_sniper_scope_confirmed(localplayer);
 }
 
 inline bool aimbot_wait_for_headshot_ready(Player* localplayer, Weapon* weapon, const aimbot_candidate& candidate) {

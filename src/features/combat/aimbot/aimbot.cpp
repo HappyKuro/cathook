@@ -507,6 +507,12 @@ void compute_readiness(aimbot_run_context& ctx) {
     (aim_auto_shoot::weapon_can_attack_or_release(ctx.local, ctx.weapon) ||
       melee_swing_active(ctx.local, ctx.weapon));
 
+  ctx.debug.attack_gate_ready = ctx.readiness.attack;
+  ctx.debug.charge_ready = ctx.readiness.charge;
+  ctx.debug.trace_ready = ctx.readiness.trace;
+  ctx.debug.settled = ctx.readiness.settled;
+  ctx.debug.primary_ready = ctx.readiness.primary;
+
   if (ctx.hitscan) {
     ctx.debug.final_trace_hit = ctx.hitscan_fire.ready && ctx.readiness.settled;
   }
@@ -584,6 +590,9 @@ aimbot_debug_reason classify_outcome(const aimbot_run_context& ctx) {
   if (!ctx.readiness.headshot) {
     return aimbot_debug_reason::headshot_wait;
   }
+  if (!ctx.readiness.charge) {
+    return aimbot_debug_reason::charge_wait;
+  }
   if ((ctx.hitscan || ctx.melee) && !ctx.readiness.trace) {
     if (ctx.hitscan_fire.seed_missing) {
       return aimbot_debug_reason::spread_seed_missing;
@@ -592,6 +601,12 @@ aimbot_debug_reason classify_outcome(const aimbot_run_context& ctx) {
       return aimbot_debug_reason::hitbox_miss;
     }
     return aimbot_debug_reason::final_trace_miss;
+  }
+  if (!ctx.readiness.settled) {
+    return aimbot_debug_reason::settle_wait;
+  }
+  if (!ctx.readiness.primary) {
+    return aimbot_debug_reason::primary_wait;
   }
   if (!ctx.readiness.ready()) {
     return aimbot_debug_reason::attack_not_ready;

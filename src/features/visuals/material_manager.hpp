@@ -18,6 +18,8 @@ struct material_definition {
   bool locked = false;
   MaterialVar* phong_tint = nullptr;
   MaterialVar* envmap_tint = nullptr;
+  bool variables_initialized = false;
+  bool needs_tint_variables = false;
   bool invert_cull = false;
   bool block_occluded = false;
 };
@@ -38,7 +40,8 @@ public:
   bool add(const std::string& name);
   bool edit(const std::string& name, const std::string& vmt);
   bool remove(const std::string& name);
-  void set_color(const material_definition* definition, const RGBA_float& color) const;
+  Material* create_runtime_material(const std::string& name, const std::string& vmt);
+  void set_color(material_definition* definition, const RGBA_float& color);
   [[nodiscard]] bool loaded() const;
 
 private:

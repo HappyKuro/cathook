@@ -22,8 +22,11 @@ enum class aimbot_debug_reason {
   auto_unscope,
   auto_rev,
   attack_not_ready,
+  charge_wait,
   scoped_only,
   headshot_wait,
+  settle_wait,
+  primary_wait,
   hitbox_miss,
   final_trace_miss,
   spread_seed_missing,
@@ -87,6 +90,11 @@ struct aimbot_debug_state {
   bool active = false;
   bool requested_shot = false;
   bool attack_ready = false;
+  bool attack_gate_ready = false;
+  bool charge_ready = true;
+  bool trace_ready = true;
+  bool settled = true;
+  bool primary_ready = true;
   bool scoped = false;
   bool scoped_ready = false;
   bool headshot_ready = false;
@@ -163,10 +171,16 @@ inline const char* aimbot_debug_reason_name(aimbot_debug_reason reason) {
     return "auto rev";
   case aimbot_debug_reason::attack_not_ready:
     return "attack wait";
+  case aimbot_debug_reason::charge_wait:
+    return "charge wait";
   case aimbot_debug_reason::scoped_only:
     return "scope wait";
   case aimbot_debug_reason::headshot_wait:
     return "head wait";
+  case aimbot_debug_reason::settle_wait:
+    return "settle wait";
+  case aimbot_debug_reason::primary_wait:
+    return "primary wait";
   case aimbot_debug_reason::hitbox_miss:
     return "body hit";
   case aimbot_debug_reason::final_trace_miss:

@@ -33,6 +33,8 @@ std::vector<Texture*> retired_textures{};
 int resource_width = 0;
 int resource_height = 0;
 bool resources_ready = false;
+std::uint64_t glow_material_generation = 0;
+bool bloom_amount_initialized = false;
 
 constexpr float glow_scale_max = 10.0f;
 
@@ -114,24 +116,6 @@ void set_stencil(RenderContext* context, const int reference, const int write_ma
   context->set_stencil_zfail_mode(zfail);
 }
 
-Material* find_engine_material(const char* name)
-{
-  if (material_system == nullptr) return nullptr;
-  Material* material = material_system->find_material(name, "Other", false, nullptr);
-  if (material != nullptr) material->increment_reference_count();
-  return material;
-}
-
-bool bind_base_texture(Material* material, Texture* texture)
-{
-  if (material == nullptr || texture == nullptr) return false;
-  bool found = false;
-  MaterialVar* base_texture = material->find_var("$basetexture", &found, false);
-  if (!found || base_texture == nullptr) return false;
-  base_texture->set_texture_value(texture);
-  return true;
-}
-
 void reset_resource_handles()
 {
   mat_glow_color = nullptr;
@@ -139,6 +123,7 @@ void reset_resource_handles()
   mat_blur_x = nullptr;
   mat_blur_y = nullptr;
   bloom_amount = nullptr;
+  bloom_amount_initialized = false;
   render_buffer_0 = nullptr;
   render_buffer_1 = nullptr;
   resource_width = 0;
@@ -204,18 +189,18 @@ bool ensure_resources()
     "monolilth_glow_buffer_1", screen.x, screen.y, rt_size_literal, image_format_rgba8888,
     material_rt_depth_separate, texture_flags_clamps | texture_flags_clampt | texture_flags_eight_bit_alpha, create_render_target_flags_hdr);
 
-  mat_halo = find_engine_material("dev/halo_add_to_screen");
-  mat_blur_x = find_engine_material("dev/blurfilterx");
-  mat_blur_y = find_engine_material("dev/blurfiltery");
-  const bool textures_bound = bind_base_texture(mat_halo, render_buffer_0) &&
-    bind_base_texture(mat_blur_x, render_buffer_0) && bind_base_texture(mat_blur_y, render_buffer_1);
-  if (mat_blur_y != nullptr) {
-    bool found = false;
-    bloom_amount = mat_blur_y->find_var("$bloomamount", &found, false);
-    if (!found) bloom_amount = nullptr;
-  }
+  const auto generation = ++glow_material_generation;
+  mat_halo = materials.create_runtime_material(
+    "monolilth_glow_halo_" + std::to_string(generation),
+    "\"UnlitGeneric\"\n{\n\t$basetexture \"monolilth_glow_buffer_0\"\n\t$additive \"1\"\n}");
+  mat_blur_x = materials.create_runtime_material(
+    "monolilth_glow_blur_x_" + std::to_string(generation),
+    "\"BlurFilterX\"\n{\n\t$basetexture \"monolilth_glow_buffer_0\"\n}");
+  mat_blur_y = materials.create_runtime_material(
+    "monolilth_glow_blur_y_" + std::to_string(generation),
+    "\"BlurFilterY\"\n{\n\t$basetexture \"monolilth_glow_buffer_1\"\n}");
   resources_ready = mat_glow_color != nullptr && mat_halo != nullptr && mat_blur_x != nullptr &&
-    mat_blur_y != nullptr && render_buffer_0 != nullptr && render_buffer_1 != nullptr && textures_bound;
+    mat_blur_y != nullptr && render_buffer_0 != nullptr && render_buffer_1 != nullptr;
   if (resources_ready) {
     resource_width = static_cast<int>(screen.x);
     resource_height = static_cast<int>(screen.y);
@@ -234,7 +219,7 @@ void draw_layer(const std::vector<chams_layer>& layers, const float distance, co
     if (layer.material.empty() || layer.material.data() == nullptr) {
       continue;
     }
-    const auto definition = materials.find(layer.material);
+    auto definition = materials.find(layer.material);
     if (!definition || definition->material == nullptr) continue;
     materials.set_color(&*definition, color);
     model_render->forced_material_override(definition->material);
@@ -352,6 +337,12 @@ void draw_glow_entities(const glow_batch& batch, const int width, const int heig
   context->pop_render_target_and_viewport();
 
   if (batch.settings.blur > 0.0f) {
+    if (!bloom_amount_initialized && mat_blur_y != nullptr) {
+      bool found = false;
+      bloom_amount = mat_blur_y->find_var("$bloomamount", &found, false);
+      if (!found) bloom_amount = nullptr;
+      bloom_amount_initialized = true;
+    }
     if (bloom_amount != nullptr) bloom_amount->set_float_value(normalized_glow_scale(batch.settings.blur));
     context->push_render_target_and_viewport();
     context->viewport(0, 0, width, height);

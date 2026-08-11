@@ -29,6 +29,12 @@ inline bool weapon_has_release_shot_ready(Weapon* weapon, bool hitscan_solution)
     weapon->get_charged_damage() > 0.0f;
 }
 
+inline bool weapon_uses_held_sniper_attack(Weapon* weapon) {
+  return weapon != nullptr &&
+    weapon->is_sniper_rifle() &&
+    weapon->get_weapon_id() != TF_WEAPON_SNIPERRIFLE_CLASSIC;
+}
+
 inline bool weapon_can_attack_or_release(Player* localplayer, Weapon* weapon) {
   if (localplayer == nullptr || weapon == nullptr || aimbot_is_projectile_weapon(weapon)) {
     return false;
@@ -42,7 +48,7 @@ inline bool weapon_can_attack_or_release(Player* localplayer, Weapon* weapon) {
     return true;
   }
 
-  return false;
+  return weapon_uses_held_sniper_attack(weapon);
 }
 
 inline result apply(user_cmd* user_cmd,
