@@ -360,6 +360,32 @@ struct aimbot_bone_bit_list {
   std::uint32_t bits[4]{};
 };
 
+inline void aimbot_make_angle_matrix(const Vec3& angles, const Vec3& origin, matrix_3x4& output) {
+  constexpr float degrees_to_radians = 0.01745329251994329577f;
+  const float pitch = angles.x * degrees_to_radians;
+  const float yaw = angles.y * degrees_to_radians;
+  const float roll = angles.z * degrees_to_radians;
+  const float sp = std::sin(pitch);
+  const float cp = std::cos(pitch);
+  const float sy = std::sin(yaw);
+  const float cy = std::cos(yaw);
+  const float sr = std::sin(roll);
+  const float cr = std::cos(roll);
+
+  output.mat[0][0] = cp * cy;
+  output.mat[1][0] = cp * sy;
+  output.mat[2][0] = -sp;
+  output.mat[0][1] = (sr * sp * cy) - (cr * sy);
+  output.mat[1][1] = (sr * sp * sy) + (cr * cy);
+  output.mat[2][1] = sr * cp;
+  output.mat[0][2] = (cr * sp * cy) + (sr * sy);
+  output.mat[1][2] = (cr * sp * sy) - (sr * cy);
+  output.mat[2][2] = cr * cp;
+  output.mat[0][3] = origin.x;
+  output.mat[1][3] = origin.y;
+  output.mat[2][3] = origin.z;
+}
+
 inline bool aimbot_reconstruct_bones(Player* target,
                                      matrix_3x4* bone_to_world,
                                      int bone_count,
@@ -384,14 +410,11 @@ inline bool aimbot_reconstruct_bones(Player* target,
   using ik_clear_targets_fn = void (*)(void*);
   using post_transform_fn = void (*)(void*, void*);
   using attachment_helper_fn = bool (*)(void*, void*);
-  using angle_matrix_fn = void (*)(const Vec3&, const Vec3&, matrix_3x4&);
 
   static const auto enable_bone_accessor = reinterpret_cast<bone_accessor_fn>(
     sigscan_module("client.so", sigs::base_animating_bone_accessor_enable));
   static const auto disable_bone_accessor = reinterpret_cast<bone_accessor_fn>(
     sigscan_module("client.so", sigs::base_animating_bone_accessor_disable));
-  static const auto make_angle_matrix = reinterpret_cast<angle_matrix_fn>(
-    sigscan_module("client.so", sigs::angle_matrix));
   static const auto setup_bones_attachment_helper = reinterpret_cast<attachment_helper_fn>(
     sigscan_module("client.so", sigs::base_animating_setup_bones_attachment_helper));
   static const auto ik_update_targets = reinterpret_cast<ik_stage_fn>(
@@ -402,7 +425,7 @@ inline bool aimbot_reconstruct_bones(Player* target,
     sigscan_module("client.so", sigs::ik_context_init));
   static const auto ik_clear_targets = reinterpret_cast<ik_clear_targets_fn>(
     sigscan_module("client.so", sigs::ik_context_clear_targets));
-  if (enable_bone_accessor == nullptr || disable_bone_accessor == nullptr || make_angle_matrix == nullptr ||
+  if (enable_bone_accessor == nullptr || disable_bone_accessor == nullptr ||
       setup_bones_attachment_helper == nullptr || ik_update_targets == nullptr ||
       ik_solve_dependencies == nullptr || ik_init == nullptr || ik_clear_targets == nullptr) {
     return false;
@@ -446,7 +469,7 @@ inline bool aimbot_reconstruct_bones(Player* target,
   root_angles.z = 0.0f;
 
   matrix_3x4 root_transform{};
-  make_angle_matrix(root_angles, root_origin, root_transform);
+  aimbot_make_angle_matrix(root_angles, root_origin, root_transform);
   Vec3 positions[aimbot_max_bones]{};
   aimbot_quaternion rotations[aimbot_max_bones]{};
   aimbot_bone_bit_list computed{};
@@ -603,12 +626,6 @@ inline bool aimbot_setup_bones_at_time(Player* target,
     return false;
   }
 
-  aimbot_bone_access_guard bone_access{};
-  if (!bone_access.active()) {
-    aimbot_bone_failure = aimbot_reject_reason::bone_access;
-    return false;
-  }
-
   const int setup_bone_count = std::min(hdr->num_bones, aimbot_max_bones);
   if (setup_bone_count <= 0) {
     aimbot_bone_failure = aimbot_reject_reason::bone_cache;
@@ -619,14 +636,6 @@ inline bool aimbot_setup_bones_at_time(Player* target,
       pose_frame, network_origin, clear_ik_targets) ||
       !aimbot_bones_are_finite(bone_to_world, setup_bone_count)) {
     aimbot_bone_failure = aimbot_reject_reason::bone_reconstruction;
-    return false;
-  }
-
-  const float cache_time = global_vars != nullptr && std::isfinite(global_vars->curtime)
-    ? global_vars->curtime
-    : setup_time;
-  if (!aimbot_update_engine_bone_cache(target, bone_to_world, setup_bone_count, cache_time)) {
-    aimbot_bone_failure = aimbot_reject_reason::bone_cache;
     return false;
   }
   if (bone_count_out != nullptr) {
@@ -661,14 +670,7 @@ inline void aimbot_capture_latest_network_pose(Player* target,
   const int sequence = aimbot_sequence(target);
   const float cycle = aimbot_cycle(target);
   const std::uint64_t pose_parameter_hash = aimbot_pose_parameter_hash(target);
-  const float last_server_time = engine != nullptr ? engine->get_last_time_stamp() : NAN;
-  const float setup_time = std::isfinite(last_server_time) && last_server_time > 0.0f
-    ? last_server_time
-    : (std::isfinite(aimbot_last_render_setup_time)
-      ? aimbot_last_render_setup_time
-      : (global_vars != nullptr && std::isfinite(global_vars->curtime)
-        ? global_vars->curtime
-        : simulation_time));
+  const float setup_time = simulation_time;
   if (model == nullptr || !std::isfinite(simulation_time) || simulation_time <= 0.0f ||
       !aimbot_vec3_is_finite(network_origin) || !aimbot_vec3_is_finite(render_origin) ||
       !aimbot_vec3_is_finite(velocity) || !aimbot_vec3_is_finite(eye_angles) ||

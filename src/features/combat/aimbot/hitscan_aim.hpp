@@ -34,39 +34,26 @@ struct hitscan_point {
   aimbot_reject_debug reject_debug{};
 };
 
-struct hitscan_pose_adjustment {
+struct hitscan_pose_timing {
   bool valid = false;
   int target_tick = 0;
   int command_tick = 0;
-  float lead_seconds = 0.0f;
-  Vec3 offset{};
 };
 
-inline hitscan_pose_adjustment hitscan_aim_pose_adjustment(Player* target) {
-  hitscan_pose_adjustment result{};
-  if (target == nullptr) {
+inline hitscan_pose_timing hitscan_aim_pose_timing(Player* target) {
+  hitscan_pose_timing result{};
+  if (target == nullptr || !backtrack::is_enabled()) {
     return result;
   }
 
-  const backtrack::current_pose_timing timing = backtrack::current_pose_timing_for(
-    target->get_simulation_time());
-  if (!timing.valid) {
-    return result;
-  }
-
-  const Vec3 velocity = target->get_velocity();
-  if (!aimbot_vec3_is_finite(velocity)) {
+  int command_tick = 0;
+  if (!backtrack::command_tick_for_current_pose(target->get_simulation_time(), &command_tick)) {
     return result;
   }
 
   result.valid = true;
-  result.target_tick = timing.target_tick;
-  result.command_tick = timing.command_tick;
-  result.lead_seconds = timing.lead_seconds;
-  result.offset = velocity * timing.lead_seconds;
-  if (!aimbot_vec3_is_finite(result.offset)) {
-    result = {};
-  }
+  result.command_tick = command_tick;
+  result.target_tick = command_tick - backtrack::current_timing().lerp_ticks;
   return result;
 }
 
@@ -248,6 +235,18 @@ inline bool hitscan_aim_world_clear(const Vec3& start_pos, const Vec3& end_pos) 
   trace_t trace{};
   engine_trace->trace_ray(&ray, hitscan_aim_trace_mask(), &filter, &trace);
   return !trace.all_solid && !trace.start_solid && trace.fraction >= 0.999f;
+}
+
+inline bool hitscan_aim_current_player_visible(const Vec3& start_pos, Player* target) {
+  if (target == nullptr) {
+    return false;
+  }
+
+  const Vec3 origin = target->get_collision_origin();
+  const Vec3 mins = target->get_collideable_mins() + origin;
+  const Vec3 maxs = target->get_collideable_maxs() + origin;
+  const Vec3 center = (mins + maxs) * 0.5f;
+  return aimbot_vec3_is_finite(center) && hitscan_aim_world_clear(start_pos, center);
 }
 
 inline hitscan_trace_result hitscan_aim_trace_line(Player* localplayer,
@@ -665,6 +664,9 @@ inline bool hitscan_aim_trace_geometry(const aimbot_candidate& candidate,
   }
 
   if (candidate.player != nullptr) {
+    if (!hitscan_aim_current_player_visible(start_pos, candidate.player)) {
+      return false;
+    }
     const Vec3 pose_offset = candidate.pose_timing_valid ? candidate.pose_offset : Vec3{};
     if (candidate.hitbox >= 0) {
       const int studio_hitbox = candidate.studio_hitbox >= 0
@@ -718,7 +720,9 @@ inline hitscan_point hitscan_aim_make_point(Player* localplayer,
   hitscan_trace_result trace{};
   const bool trace_reaches_target = hitscan_aim_trace_point(localplayer, target, position, &trace);
   const bool trace_hit_target = hitscan_aim_same_entity(trace.entity, target);
-  if (target->get_class_id() == class_id::PLAYER && !trace_hit_target) {
+  if (target->get_class_id() == class_id::PLAYER &&
+      (!hitscan_aim_current_player_visible(start_pos, target) ||
+       (!trace_hit_target && !hitscan_aim_world_clear(start_pos, position)))) {
     point.reject_debug = hitscan_aim_make_reject_debug(
       target,
       aimbot_reject_reason::trace_blocked,
@@ -838,7 +842,7 @@ inline hitscan_point hitscan_aim_find_point(Player* localplayer,
     (settings.hitbox_mask & aim_hitbox_mask_head) != 0 &&
     !body_forced;
 
-  const hitscan_pose_adjustment pose_adjustment = hitscan_aim_pose_adjustment(target);
+  const hitscan_pose_timing pose_timing = hitscan_aim_pose_timing(target);
 
   matrix_3x4 bone_to_world[hitscan_aim_max_bones]{};
   int bone_count = 0;
@@ -848,21 +852,6 @@ inline hitscan_point hitscan_aim_find_point(Player* localplayer,
       target,
       failure == aimbot_reject_reason::none ? aimbot_reject_reason::bone_cache : failure);
     return best;
-  }
-
-  if (!aimbot_translate_bones(bone_to_world, bone_count, pose_adjustment.offset)) {
-    best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::bone_reconstruction);
-    return best;
-  }
-
-  if (pose_adjustment.valid) {
-    const float cache_time = global_vars != nullptr && std::isfinite(global_vars->curtime)
-      ? global_vars->curtime
-      : target->get_simulation_time();
-    if (!aimbot_update_engine_bone_cache(target, bone_to_world, bone_count, cache_time)) {
-      best.reject_debug = hitscan_aim_make_reject_debug(target, aimbot_reject_reason::bone_cache);
-      return best;
-    }
   }
 
   const Vec3 shoot_pos = hitscan_aim_eye_position(localplayer);
@@ -921,11 +910,9 @@ inline hitscan_point hitscan_aim_find_point(Player* localplayer,
         hitbox->bone,
         entry.priority,
         position);
-      point.pose_timing_valid = pose_adjustment.valid;
-      point.pose_target_tick = pose_adjustment.target_tick;
-      point.pose_command_tick = pose_adjustment.command_tick;
-      point.pose_lead_seconds = pose_adjustment.lead_seconds;
-      point.pose_offset = pose_adjustment.offset;
+      point.pose_timing_valid = pose_timing.valid;
+      point.pose_target_tick = pose_timing.target_tick;
+      point.pose_command_tick = pose_timing.command_tick;
       if (!point.valid) {
         hitscan_aim_keep_reject(&best, point.reject_debug);
         continue;

@@ -78,16 +78,6 @@ struct backtrack_timing {
   int lerp_ticks = 0;
 };
 
-struct current_pose_timing {
-  bool valid = false;
-  int target_tick = 0;
-  int command_tick = 0;
-  float simulation_time = 0.0f;
-  float server_time = 0.0f;
-  float target_time = 0.0f;
-  float lead_seconds = 0.0f;
-};
-
 struct backtrack_record_view {
   std::array<const backtrack_record*, max_records> records{};
   int count = 0;
@@ -103,8 +93,6 @@ void clear();
 [[nodiscard]] float fake_latency_seconds();
 [[nodiscard]] float interpolation_time();
 [[nodiscard]] backtrack_timing current_timing();
-[[nodiscard]] current_pose_timing current_pose_timing_for(float simulation_time);
-
 [[nodiscard]] bool command_tick_for_current_pose(float simulation_time, int* tick_count);
 [[nodiscard]] bool command_tick_for_record(const backtrack_record& record, Player* player, int* tick_count);
 [[nodiscard]] const backtrack_history* records_for_player(Player* player);

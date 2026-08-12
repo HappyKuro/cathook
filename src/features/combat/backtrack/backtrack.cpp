@@ -626,12 +626,7 @@ bool add_record_hitbox(backtrack_record* record,
 
   matrix_3x4 bone_to_world[max_bones]{};
   int bone_count = 0;
-  const float last_server_time = engine != nullptr ? engine->get_last_time_stamp() : NAN;
-  const float setup_time = std::isfinite(last_server_time) && last_server_time > 0.0f
-    ? last_server_time
-    : (global_vars != nullptr && std::isfinite(global_vars->curtime)
-      ? global_vars->curtime
-      : record->sim_time);
+  const float setup_time = record->sim_time;
   const int pose_frame = global_vars != nullptr ? global_vars->framecount : 0;
   if (!aimbot_setup_bones_at_time(player, bone_to_world, setup_time, pose_frame,
       player->get_origin(), true, false, &bone_count)) {
@@ -808,39 +803,6 @@ float interpolation_time()
 backtrack_timing current_timing()
 {
   return build_timing();
-}
-
-current_pose_timing current_pose_timing_for(float simulation_time)
-{
-  current_pose_timing result{};
-  result.simulation_time = simulation_time;
-  const backtrack_timing timing = build_timing(false);
-  if (!timing.valid || !std::isfinite(simulation_time) || simulation_time <= 0.0f) {
-    return result;
-  }
-
-  result.server_time = ticks_to_time(timing.server_tick);
-  result.target_time = result.server_time - timing.correct;
-  const float age = result.server_time - simulation_time;
-  const float delta = std::fabs(timing.correct - age);
-  const float max_lead = std::min(timing.max_unlag, 0.10f);
-  if (!std::isfinite(result.server_time) || !std::isfinite(result.target_time) ||
-      !std::isfinite(age) || !std::isfinite(delta) ||
-      age < -tick_interval() || age > timing.max_unlag + tick_interval() ||
-      delta > std::max(lag_compensation_delta_limit, tick_interval())) {
-    return result;
-  }
-
-  result.lead_seconds = std::clamp(result.target_time - simulation_time, 0.0f, max_lead);
-  if (!std::isfinite(result.lead_seconds) || result.target_time - simulation_time > max_lead) {
-    return result;
-  }
-
-  const float compensated_time = simulation_time + result.lead_seconds;
-  result.target_tick = time_to_ticks(compensated_time);
-  result.command_tick = result.target_tick + timing.lerp_ticks;
-  result.valid = result.target_tick > 0 && result.command_tick > 0;
-  return result;
 }
 
 bool command_tick_for_current_pose(float simulation_time, int* tick_count)
