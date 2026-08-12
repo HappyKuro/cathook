@@ -1,12 +1,7 @@
 /*
-/^-----^\   data: 2026-08-10
-V  o o  V  file: src/features/misc/removals.cpp
- |  Y  |   author: HappyKuro
-  \ Q /
-  / - \
-  |    \
-  |     \     )
-  || (___\====
+data: 2026-08-12
+file: src/features/misc/removals.cpp
+author: HappyKuro
 */
 #include "features/misc/removals.hpp"
 

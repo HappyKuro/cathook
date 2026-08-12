@@ -1,12 +1,7 @@
 /*
-/^-----^\   data: 2026-08-10
-V  o o  V  file: src/features/misc/removals.hpp
- |  Y  |   author: HappyKuro
-  \ Q /
-  / - \
-  |    \
-  |     \     )
-  || (___\====
+data: 2026-08-12
+file: src/features/misc/removals.hpp
+author: HappyKuro
 */
 #ifndef REMOVALS_HPP
 #define REMOVALS_HPP
