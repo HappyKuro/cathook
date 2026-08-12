@@ -810,6 +810,39 @@ backtrack_timing current_timing()
   return build_timing();
 }
 
+current_pose_timing current_pose_timing_for(float simulation_time)
+{
+  current_pose_timing result{};
+  result.simulation_time = simulation_time;
+  const backtrack_timing timing = build_timing(false);
+  if (!timing.valid || !std::isfinite(simulation_time) || simulation_time <= 0.0f) {
+    return result;
+  }
+
+  result.server_time = ticks_to_time(timing.server_tick);
+  result.target_time = result.server_time - timing.correct;
+  const float age = result.server_time - simulation_time;
+  const float delta = std::fabs(timing.correct - age);
+  const float max_lead = std::min(timing.max_unlag, 0.10f);
+  if (!std::isfinite(result.server_time) || !std::isfinite(result.target_time) ||
+      !std::isfinite(age) || !std::isfinite(delta) ||
+      age < -tick_interval() || age > timing.max_unlag + tick_interval() ||
+      delta > std::max(lag_compensation_delta_limit, tick_interval())) {
+    return result;
+  }
+
+  result.lead_seconds = std::clamp(result.target_time - simulation_time, 0.0f, max_lead);
+  if (!std::isfinite(result.lead_seconds) || result.target_time - simulation_time > max_lead) {
+    return result;
+  }
+
+  const float compensated_time = simulation_time + result.lead_seconds;
+  result.target_tick = time_to_ticks(compensated_time);
+  result.command_tick = result.target_tick + timing.lerp_ticks;
+  result.valid = result.target_tick > 0 && result.command_tick > 0;
+  return result;
+}
+
 bool command_tick_for_current_pose(float simulation_time, int* tick_count)
 {
   const backtrack_timing timing = build_timing(false);

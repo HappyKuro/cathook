@@ -196,6 +196,9 @@ const steam_login_error_5_patterns = [
     /login error\s*:?\s*e5\b/i
 ];
 const steam_account_disabled_e43_patterns = [
+    /\be43\b/i,
+    /\b(?:e|eresult|result|error|code|status)\s*[:=]?\s*43\b/i,
+    /\b43\b[^\n]{0,80}(?:disabled|account|login|logon|auth)/i,
     /(?:login|logon|auth|account|error|eresult|result)[^\n]{0,80}\be43\b/i,
     /\be43\b[^\n]{0,80}(?:login|logon|auth|account|error|disabled)/i
 ];
@@ -2768,7 +2771,8 @@ class Bot extends EventEmitter {
 
     steam_account_disabled_e43_log_path() {
         for (var log_path of this.existingSteamLogPaths()) {
-            if (!['connection_log.txt', 'console_log.txt', 'steamui_login.txt', 'webhelper_js.txt'].includes(path.basename(log_path)))
+            const basename = path.basename(log_path);
+            if (!['connection_log.txt', 'console_log.txt', 'steamui_login.txt', 'webhelper_js.txt', `${this.name}.steam.log`].includes(basename))
                 continue;
 
             try {
@@ -3048,7 +3052,7 @@ class Bot extends EventEmitter {
             webhelper_stall_log_path: null
         };
         const ready_patterns = this.steam_ready_log_patterns();
-        const auth_log_names = new Set(['connection_log.txt', 'console_log.txt', 'steamui_login.txt', 'webhelper_js.txt']);
+        const auth_log_names = new Set(['connection_log.txt', 'console_log.txt', 'steamui_login.txt', 'webhelper_js.txt', `${this.name}.steam.log`]);
         const webhelper_log_names = new Set(['steamui_html.txt', 'webhelper.txt']);
 
         for (const log_path of this.existingSteamLogPaths()) {

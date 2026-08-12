@@ -633,7 +633,7 @@ class BotManager {
             while (this.bots.length < this.quota && created_count < this.quota_creation_batch_limit) {
                 const bot = new Bot.bot(this.next_bot_id_for_fill());
                 bot.manager = this;
-                bot.shouldRun = true;
+                bot.shouldRun = false;
                 bot.shouldRestart = false;
                 this.bots.push(bot);
                 created_count++;

@@ -167,6 +167,15 @@ struct aimbot_debug_state {
   bool selected_backtrack = false;
   Vec3 selected_aim_position{};
   float selected_simulation_time = NAN;
+  bool pose_timing_valid = false;
+  bool compensation_applied = false;
+  int pose_target_tick = 0;
+  int pose_command_tick = 0;
+  float pose_lead_seconds = 0.0f;
+  float pose_lead_distance = 0.0f;
+  float target_speed = 0.0f;
+  Vec3 target_velocity{};
+  Vec3 pose_offset{};
   float final_trace_fraction = 1.0f;
   int final_trace_contents = 0;
   Vec3 final_trace_end{};

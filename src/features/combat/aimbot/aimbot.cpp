@@ -331,6 +331,22 @@ void populate_debug(aimbot_run_context& ctx) {
   debug.selected_backtrack = ctx.target.backtrack;
   debug.selected_aim_position = ctx.target.aim_position;
   debug.selected_simulation_time = ctx.target.simulation_time;
+  debug.pose_timing_valid = ctx.target.pose_timing_valid;
+  debug.compensation_applied = ctx.target.pose_timing_valid &&
+    aimbot_vec3_is_finite(ctx.target.pose_offset) &&
+    aimbot_distance_squared(ctx.target.pose_offset, {}) > 0.0001f;
+  debug.pose_target_tick = ctx.target.pose_target_tick;
+  debug.pose_command_tick = ctx.target.pose_command_tick;
+  debug.pose_lead_seconds = ctx.target.pose_lead_seconds;
+  debug.pose_lead_distance = std::sqrt(aimbot_distance_squared(ctx.target.pose_offset, {}));
+  if (ctx.target.player != nullptr) {
+    debug.target_velocity = ctx.target.player->get_velocity();
+    debug.target_speed = std::sqrt(
+      (debug.target_velocity.x * debug.target_velocity.x) +
+      (debug.target_velocity.y * debug.target_velocity.y) +
+      (debug.target_velocity.z * debug.target_velocity.z));
+  }
+  debug.pose_offset = ctx.target.pose_offset;
   debug.fov = ctx.target.fov;
   debug.distance = ctx.target.distance;
   debug.tick_count = ctx.target.tick_count;

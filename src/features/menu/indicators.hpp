@@ -223,6 +223,9 @@ inline auto build_aimbot_debug_rows() -> owned_indicator_rows
   add("target id", "team " + std::to_string(state.selected_team) + " ref " + std::to_string(state.selected_handle) + (state.selected_backtrack ? " bt" : " cur"));
   add("aim point", format_float(state.selected_aim_position.x, "%.0f") + "," + format_float(state.selected_aim_position.y, "%.0f") + "," + format_float(state.selected_aim_position.z, "%.0f"));
   add("target sim", format_float(state.selected_simulation_time, "%.3f"));
+  add("velocity", format_float(state.target_velocity.x, "%.0f") + "," + format_float(state.target_velocity.y, "%.0f") + "," + format_float(state.target_velocity.z, "%.0f") + " s" + format_float(state.target_speed, "%.0f"));
+  add("lead", std::string(bool_text(state.pose_timing_valid)) + " " + format_float(state.pose_lead_seconds * 1000.0f, "%.1f") + " ms / " + format_float(state.pose_lead_distance, "%.1f") + " hu");
+  add("target/cmd tick", std::to_string(state.pose_target_tick) + " / " + std::to_string(state.pose_command_tick) + (state.compensation_applied ? " moved" : " raw"));
   add("trace", std::to_string(state.trace_entity_index) + " hb " + std::to_string(state.trace_hitbox));
   add("final trace", std::string(bool_text(state.final_trace_hit)) + " fr " + format_float(state.final_trace_fraction, "%.3f") + " ent " + std::to_string(state.trace_entity_index) + " hb " + std::to_string(state.trace_hitbox) + " c " + std::to_string(state.final_trace_contents));
   add("trace end", format_float(state.final_trace_end.x, "%.0f") + "," + format_float(state.final_trace_end.y, "%.0f") + "," + format_float(state.final_trace_end.z, "%.0f"));

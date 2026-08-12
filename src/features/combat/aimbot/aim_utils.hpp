@@ -74,6 +74,11 @@ struct aimbot_candidate {
   float spread = 0.0f;
   aimbot_debug_reason debug_reason = aimbot_debug_reason::none;
   aimbot_reject_debug reject_debug{};
+  bool pose_timing_valid = false;
+  int pose_target_tick = 0;
+  int pose_command_tick = 0;
+  float pose_lead_seconds = 0.0f;
+  Vec3 pose_offset{};
   bool visible = false;
   bool preferred = false;
 };
@@ -1051,6 +1056,22 @@ inline Vec3 aimbot_transform_point(const Vec3& point, const matrix_3x4& matrix) 
     (point.x * matrix.mat[1][0]) + (point.y * matrix.mat[1][1]) + (point.z * matrix.mat[1][2]) + matrix.mat[1][3],
     (point.x * matrix.mat[2][0]) + (point.y * matrix.mat[2][1]) + (point.z * matrix.mat[2][2]) + matrix.mat[2][3]
   };
+}
+
+inline bool aimbot_translate_bones(matrix_3x4* bone_to_world,
+                                   int bone_count,
+                                   const Vec3& offset) {
+  if (bone_to_world == nullptr || bone_count <= 0 || bone_count > aimbot_max_bones ||
+      !aimbot_vec3_is_finite(offset)) {
+    return false;
+  }
+
+  for (int bone = 0; bone < bone_count; ++bone) {
+    bone_to_world[bone].mat[0][3] += offset.x;
+    bone_to_world[bone].mat[1][3] += offset.y;
+    bone_to_world[bone].mat[2][3] += offset.z;
+  }
+  return aimbot_bones_are_finite(bone_to_world, bone_count);
 }
 
 inline Vec3 aimbot_inverse_transform_point(const Vec3& point, const matrix_3x4& matrix) {
