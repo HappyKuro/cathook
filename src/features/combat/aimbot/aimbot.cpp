@@ -294,6 +294,13 @@ Vec3 candidate_command_angles(Player* localplayer, const aimbot_candidate& candi
 
 void populate_debug(aimbot_run_context& ctx) {
   aimbot_debug_state& debug = ctx.debug;
+  const backtrack::backtrack_timing timing = backtrack::current_timing();
+  debug.outgoing_latency = timing.outgoing_latency;
+  debug.incoming_latency = timing.incoming_latency;
+  debug.interpolation = backtrack::interpolation_time();
+  debug.fake_interpolation = timing.fake_interp;
+  debug.timing_correct = timing.correct;
+  debug.lerp_ticks = timing.lerp_ticks;
   debug.candidates_total = aim_state::scan.candidates_total;
   debug.candidates_visible = aim_state::scan.candidates_visible;
   debug.candidates_rejected = aim_state::scan.candidates_rejected;
@@ -308,6 +315,9 @@ void populate_debug(aimbot_run_context& ctx) {
   debug.last_reject = aim_state::scan.last_reject;
   debug.last_skip = aim_state::scan.last_skip;
   debug.best_reject = aim_state::scan.best_reject;
+  debug.pose = ctx.target.player != nullptr
+    ? aimbot_get_pose_debug(ctx.target.player)
+    : aimbot_get_pose_debug_index(debug.best_reject.entity_index);
 
   if (ctx.target.entity == nullptr) {
     return;
@@ -315,6 +325,28 @@ void populate_debug(aimbot_run_context& ctx) {
 
   debug.selected_entity_index = ctx.target.entity->get_index();
   debug.selected_hitbox = ctx.target.hitbox;
+  debug.selected_team = static_cast<int>(ctx.target.entity->get_team());
+  debug.selected_health = aimbot_entity_health(ctx.target.entity);
+  debug.selected_handle = ctx.target.entity->get_ref_handle();
+  debug.selected_backtrack = ctx.target.backtrack;
+  debug.selected_aim_position = ctx.target.aim_position;
+  debug.selected_simulation_time = ctx.target.simulation_time;
+  debug.pose_timing_valid = ctx.target.pose_timing_valid;
+  debug.compensation_applied = ctx.target.pose_timing_valid &&
+    aimbot_vec3_is_finite(ctx.target.pose_offset) &&
+    aimbot_distance_squared(ctx.target.pose_offset, {}) > 0.0001f;
+  debug.pose_target_tick = ctx.target.pose_target_tick;
+  debug.pose_command_tick = ctx.target.pose_command_tick;
+  debug.pose_lead_seconds = ctx.target.pose_lead_seconds;
+  debug.pose_lead_distance = std::sqrt(aimbot_distance_squared(ctx.target.pose_offset, {}));
+  if (ctx.target.player != nullptr) {
+    debug.target_velocity = ctx.target.player->get_velocity();
+    debug.target_speed = std::sqrt(
+      (debug.target_velocity.x * debug.target_velocity.x) +
+      (debug.target_velocity.y * debug.target_velocity.y) +
+      (debug.target_velocity.z * debug.target_velocity.z));
+  }
+  debug.pose_offset = ctx.target.pose_offset;
   debug.fov = ctx.target.fov;
   debug.distance = ctx.target.distance;
   debug.tick_count = ctx.target.tick_count;
@@ -491,6 +523,9 @@ void compute_hitscan_fire(aimbot_run_context& ctx) {
   ctx.debug.pellet_index = ctx.hitscan_fire.pellet_index;
   ctx.debug.trace_hitbox = ctx.hitscan_fire.trace_hitbox;
   ctx.debug.trace_entity_index = ctx.hitscan_fire.trace_entity_index;
+  ctx.debug.final_trace_fraction = ctx.hitscan_fire.trace_fraction;
+  ctx.debug.final_trace_contents = ctx.hitscan_fire.trace_contents;
+  ctx.debug.final_trace_end = ctx.hitscan_fire.trace_end;
 }
 
 void compute_readiness(aimbot_run_context& ctx) {

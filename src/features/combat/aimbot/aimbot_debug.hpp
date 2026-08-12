@@ -11,6 +11,7 @@ V  o o  V  file: src/features/combat/aimbot/aimbot_debug.hpp
 #ifndef AIMBOT_DEBUG_HPP
 #define AIMBOT_DEBUG_HPP
 #include <cfloat>
+#include <cstdint>
 
 enum class aimbot_debug_reason {
   none,
@@ -91,6 +92,26 @@ struct aimbot_reject_debug {
   bool backtrack = false;
 };
 
+struct aimbot_pose_debug_info {
+  bool valid = false;
+  bool getter_ready = false;
+  bool updater_ready = false;
+  bool cache_updated = false;
+  bool signature_reused = false;
+  int target_index = -1;
+  int target_handle = 0;
+  std::uintptr_t cache_handle = 0;
+  int bone_count = 0;
+  int generation = 0;
+  int pose_frame = 0;
+  int current_frame = 0;
+  float simulation_time = NAN;
+  float setup_time = NAN;
+  float cache_time = NAN;
+  float simulation_age = NAN;
+  aimbot_reject_reason failure = aimbot_reject_reason::none;
+};
+
 struct aimbot_debug_state {
   bool active = false;
   bool requested_shot = false;
@@ -140,6 +161,31 @@ struct aimbot_debug_state {
   Vec3 final_command_angles{};
   float resolver_pitch = 0.0f;
   bool resolver_active = false;
+  int selected_team = -1;
+  int selected_health = 0;
+  int selected_handle = 0;
+  bool selected_backtrack = false;
+  Vec3 selected_aim_position{};
+  float selected_simulation_time = NAN;
+  bool pose_timing_valid = false;
+  bool compensation_applied = false;
+  int pose_target_tick = 0;
+  int pose_command_tick = 0;
+  float pose_lead_seconds = 0.0f;
+  float pose_lead_distance = 0.0f;
+  float target_speed = 0.0f;
+  Vec3 target_velocity{};
+  Vec3 pose_offset{};
+  float final_trace_fraction = 1.0f;
+  int final_trace_contents = 0;
+  Vec3 final_trace_end{};
+  float outgoing_latency = 0.0f;
+  float incoming_latency = 0.0f;
+  float interpolation = 0.0f;
+  float fake_interpolation = 0.0f;
+  float timing_correct = 0.0f;
+  int lerp_ticks = 0;
+  aimbot_pose_debug_info pose{};
   aimbot_reject_debug last_reject{};
   aimbot_reject_debug last_skip{};
   aimbot_reject_debug best_reject{};

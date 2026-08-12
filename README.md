@@ -9,6 +9,11 @@
 # BETA WARNING
 
 This project is currently in beta. Some features may be broken, unfinished, unstable, or may not work at all. Expect bugs, crashes, missing behavior, and issues.
+You need to downgrade steam before trying to host bots. ( /scripts )
+
+# SUPPORT DISCORD SERVER
+
+Discord: [https://discord.gg/VP8JRguD83](https://discord.gg/VP8JRguD83).
 
 ##
 
@@ -108,21 +113,6 @@ On PowerShell hosts:
 ./docker_build.ps1
 ```
 
-## Preload
-
-Use `./preload` before launching TF2 when the library needs to be loaded before game modules are ready. It uses the saved mode unless `CATHOOK_MODE`, `TEXTMODE`, `CATHOOK_TEXTMODE`, or `CATHOOK_BINARY` overrides it.
-
-## Repository Layout
-
-* `src/cathook.cpp` - unity build entry point
-* `src/core/` - shared runtime systems, hooks, logging, config, diagnostics
-* `src/features/` - gameplay, automation, visual, movement, combat, and menu features
-* `src/games/tf2/sdk/` - TF2-facing entities, interfaces, materials, and SDK types
-* `src/external/` - bundled third-party code such as ImGui, MD5, libsigscan, and funchook headers
-* `assets/` - runtime fonts, sounds, and textures copied from upstream cathook data
-* `botpanel/` - bundled catbot IPC server and web panel
-* `packages/` - distro dependency installers used by `install-deps`
-
 ## Contributing
 
 Do you want to submit code to Cathook? Open a pull request and keep changes focused.
@@ -134,10 +124,6 @@ Keep code simple, direct, and consistent with the existing style:
 * Use `snake_case`.
 * Prefer small focused functions and POD-style data where practical.
 * Keep platform-specific behavior isolated.
-
-## Community
-
-Discord: [https://discord.gg/VP8JRguD83](https://discord.gg/VP8JRguD83)
 
 ## Credits
 

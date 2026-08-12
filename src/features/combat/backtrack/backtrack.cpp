@@ -626,12 +626,7 @@ bool add_record_hitbox(backtrack_record* record,
 
   matrix_3x4 bone_to_world[max_bones]{};
   int bone_count = 0;
-  const float last_server_time = engine != nullptr ? engine->get_last_time_stamp() : NAN;
-  const float setup_time = std::isfinite(last_server_time) && last_server_time > 0.0f
-    ? last_server_time
-    : (global_vars != nullptr && std::isfinite(global_vars->curtime)
-      ? global_vars->curtime
-      : record->sim_time);
+  const float setup_time = record->sim_time;
   const int pose_frame = global_vars != nullptr ? global_vars->framecount : 0;
   if (!aimbot_setup_bones_at_time(player, bone_to_world, setup_time, pose_frame,
       player->get_origin(), true, false, &bone_count)) {

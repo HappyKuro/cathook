@@ -374,7 +374,11 @@ goal_candidate make_candidate(goal_type type, float score, const Vec3& destinati
 
 goal_candidate make_entity_candidate(goal_type type, float score, const Vec3& destination, nav_area_id destination_area, int entity_index)
 {
-  auto candidate = make_candidate(type, score, destination, destination_area);
+  goal_candidate candidate{};
+  candidate.type = type;
+  candidate.score = score;
+  candidate.destination = destination;
+  candidate.destination_area = destination_area;
   candidate.entity_index = entity_index;
   candidate.rejected = candidate_is_rejected(candidate);
   return candidate;
@@ -384,8 +388,7 @@ void choose_best(goal_candidate& best, const goal_candidate& candidate)
 {
   if (!candidate.destination_area.valid()
     || !goal_enabled(candidate.type)
-    || candidate.rejected
-    || candidate_is_rejected(candidate))
+    || candidate.rejected)
   {
     return;
   }
@@ -1657,15 +1660,22 @@ goal_candidate navbot_goals::choose_roam_goal(const navbot_mesh& mesh, Player* l
       && distance_squared_2d(localplayer->get_origin(), persisted_area->center) > 250.0f * 250.0f)
     {
       auto persisted_candidate = make_roam_candidate(mesh, localplayer, last_roam_area_, prefer_spawn_exit);
-      if (!persisted_candidate.rejected && !candidate_is_rejected(persisted_candidate))
+      if (!persisted_candidate.rejected)
       {
         return persisted_candidate;
       }
     }
   }
 
-  auto candidate_ids = std::vector<nav_area_id>{};
-  candidate_ids.reserve(mesh.cache().areas.size());
+  struct scored_roam_candidate
+  {
+    nav_area_id id{};
+    float score = 0.0f;
+  };
+
+  const auto local_origin = localplayer->get_origin();
+  auto candidates = std::vector<scored_roam_candidate>{};
+  candidates.reserve(mesh.cache().areas.size());
 
   for (const auto& area : mesh.cache().areas)
   {
@@ -1676,34 +1686,34 @@ goal_candidate navbot_goals::choose_roam_goal(const navbot_mesh& mesh, Player* l
       continue;
     }
 
-    candidate_ids.emplace_back(area.id);
+    candidates.emplace_back(scored_roam_candidate{
+      area.id,
+      roam_area_score(area, local_origin, prefer_spawn_exit)
+    });
   }
 
-  if (candidate_ids.empty())
+  if (candidates.empty())
   {
     return make_local_fallback();
   }
 
-  std::sort(candidate_ids.begin(), candidate_ids.end(), [&mesh, localplayer, prefer_spawn_exit](nav_area_id left, nav_area_id right)
+  std::sort(candidates.begin(), candidates.end(), [](const scored_roam_candidate& left, const scored_roam_candidate& right)
   {
-    auto left_area = mesh.find_area(left);
-    auto right_area = mesh.find_area(right);
-    if (left_area == nullptr || right_area == nullptr)
-    {
-      return left.value < right.value;
-    }
-
-    return roam_area_score(*left_area, localplayer->get_origin(), prefer_spawn_exit)
-      > roam_area_score(*right_area, localplayer->get_origin(), prefer_spawn_exit);
+    return left.score > right.score;
   });
 
   auto available_candidate_ids = std::vector<nav_area_id>{};
-  available_candidate_ids.reserve(candidate_ids.size());
-  for (auto area_id : candidate_ids)
+  constexpr size_t max_roam_candidates = 10;
+  available_candidate_ids.reserve(std::min(candidates.size(), max_roam_candidates));
+  for (const auto& candidate : candidates)
   {
-    if (!make_roam_candidate(mesh, localplayer, area_id, prefer_spawn_exit).rejected)
+    if (!make_roam_candidate(mesh, localplayer, candidate.id, prefer_spawn_exit).rejected)
     {
-      available_candidate_ids.emplace_back(area_id);
+      available_candidate_ids.emplace_back(candidate.id);
+      if (available_candidate_ids.size() == max_roam_candidates)
+      {
+        break;
+      }
     }
   }
 
@@ -1713,7 +1723,7 @@ goal_candidate navbot_goals::choose_roam_goal(const navbot_mesh& mesh, Player* l
   }
 
   static std::mt19937 random_engine{std::random_device{}()};
-  auto candidate_limit = std::min<size_t>(available_candidate_ids.size(), 10);
+  auto candidate_limit = available_candidate_ids.size();
   std::uniform_int_distribution<size_t> random_candidate(0, candidate_limit - 1);
   auto selected_index = random_candidate(random_engine);
 
@@ -1735,8 +1745,7 @@ goal_candidate navbot_goals::choose_mvm_goal(const navbot_mesh& mesh, Player* lo
   auto take_if_valid = [&best](goal_candidate candidate) {
     if (!candidate.destination_area.valid()
       || !goal_enabled(candidate.type)
-      || candidate.rejected
-      || candidate_is_rejected(candidate))
+      || candidate.rejected)
     {
       return false;
     }
@@ -1806,8 +1815,7 @@ bool navbot_goals::note_job_candidate(const goal_candidate& candidate)
 {
   if (!candidate.destination_area.valid()
     || !goal_enabled(candidate.type)
-    || candidate.rejected
-    || candidate_is_rejected(candidate))
+    || candidate.rejected)
   {
     return false;
   }

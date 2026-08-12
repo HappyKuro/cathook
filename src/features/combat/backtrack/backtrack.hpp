@@ -93,7 +93,6 @@ void clear();
 [[nodiscard]] float fake_latency_seconds();
 [[nodiscard]] float interpolation_time();
 [[nodiscard]] backtrack_timing current_timing();
-
 [[nodiscard]] bool command_tick_for_current_pose(float simulation_time, int* tick_count);
 [[nodiscard]] bool command_tick_for_record(const backtrack_record& record, Player* player, int* tick_count);
 [[nodiscard]] const backtrack_history* records_for_player(Player* player);

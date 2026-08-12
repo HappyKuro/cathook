@@ -161,6 +161,34 @@ using should_transmit_fn = int (*)(void*, void*);
 should_transmit_fn scene_entity_should_transmit_original = nullptr;
 should_transmit_fn base_entity_should_transmit = nullptr;
 
+namespace
+{
+
+std::filesystem::path exception_log_path()
+{
+  const char* const bot_id{ std::getenv("CAT_BOT_ID") };
+  if (bot_id != nullptr && bot_id[0] != '\0')
+  {
+    const std::string_view id{ bot_id };
+    const bool numeric_id{ std::all_of(
+      id.begin(),
+      id.end(),
+      [](const char character)
+      {
+        return character >= '0' && character <= '9';
+      }) };
+    if (numeric_id)
+    {
+      return cathook::core::log_directory() /
+        (std::string{ "b" } + bot_id + ".exception.log");
+    }
+  }
+
+  return cathook::core::log_directory() / "exception.log";
+}
+
+}
+
 void client_panel_image_paint_hook(void* panel)
 {
   CATHOOK_HOOK_GUARD();
@@ -1069,8 +1097,7 @@ bool initialize_module_runtime() {
   print("initialize_module_runtime initialize logger\n");
   cathook::core::initialize_logger(cathook::core::log_directory() / "cathook.log");
   print("initialize_module_runtime install exception handler\n");
-  cathook::core::exception_handler::install(
-    cathook::core::log_directory() / "exception.log");
+  cathook::core::exception_handler::install(exception_log_path());
   print("initialize_module_runtime initialize config store\n");
   cathook::core::initialize_config_store(cathook::core::root_directory());
   print("initialize_module_runtime load default config\n");
@@ -1974,9 +2001,7 @@ __attribute__((constructor))
 void entry()
 {
 
-  cathook::core::exception_handler::install(
-    cathook::core::log_directory() /
-      "exception.log");
+  cathook::core::exception_handler::install(exception_log_path());
 
   const char* auto_attach = std::getenv("CATHOOK_AUTO_ATTACH");
   if (auto_attach != nullptr && std::strcmp(auto_attach, "1") == 0) {

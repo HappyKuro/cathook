@@ -26,8 +26,36 @@ struct hitscan_point {
   Vec3 position{};
   Vec3 angles{};
   float fov = FLT_MAX;
+  bool pose_timing_valid = false;
+  int pose_target_tick = 0;
+  int pose_command_tick = 0;
+  float pose_lead_seconds = 0.0f;
+  Vec3 pose_offset{};
   aimbot_reject_debug reject_debug{};
 };
+
+struct hitscan_pose_timing {
+  bool valid = false;
+  int target_tick = 0;
+  int command_tick = 0;
+};
+
+inline hitscan_pose_timing hitscan_aim_pose_timing(Player* target) {
+  hitscan_pose_timing result{};
+  if (target == nullptr || !backtrack::is_enabled()) {
+    return result;
+  }
+
+  int command_tick = 0;
+  if (!backtrack::command_tick_for_current_pose(target->get_simulation_time(), &command_tick)) {
+    return result;
+  }
+
+  result.valid = true;
+  result.command_tick = command_tick;
+  result.target_tick = command_tick - backtrack::current_timing().lerp_ticks;
+  return result;
+}
 
 struct hitscan_hitbox_entry {
   int hitbox = -1;
@@ -207,6 +235,18 @@ inline bool hitscan_aim_world_clear(const Vec3& start_pos, const Vec3& end_pos) 
   trace_t trace{};
   engine_trace->trace_ray(&ray, hitscan_aim_trace_mask(), &filter, &trace);
   return !trace.all_solid && !trace.start_solid && trace.fraction >= 0.999f;
+}
+
+inline bool hitscan_aim_current_player_visible(const Vec3& start_pos, Player* target) {
+  if (target == nullptr) {
+    return false;
+  }
+
+  const Vec3 origin = target->get_collision_origin();
+  const Vec3 mins = target->get_collideable_mins() + origin;
+  const Vec3 maxs = target->get_collideable_maxs() + origin;
+  const Vec3 center = (mins + maxs) * 0.5f;
+  return aimbot_vec3_is_finite(center) && hitscan_aim_world_clear(start_pos, center);
 }
 
 inline hitscan_trace_result hitscan_aim_trace_line(Player* localplayer,
@@ -528,7 +568,8 @@ inline bool hitscan_aim_accepts_trace_hitbox(
 inline bool hitscan_aim_ray_hits_model_hitbox(Player* target,
   int studio_hitbox_id,
   const Vec3& start_pos,
-  const Vec3& end_pos) {
+  const Vec3& end_pos,
+  const Vec3& pose_offset = {}) {
   if (target == nullptr || studio_hitbox_id < 0 || model_info == nullptr) {
     return false;
   }
@@ -551,8 +592,12 @@ inline bool hitscan_aim_ray_hits_model_hitbox(Player* target,
     return false;
   }
 
-  const Vec3 local_start = aimbot_inverse_transform_point(start_pos, bone_to_world[hitbox->bone]);
-  const Vec3 local_end = aimbot_inverse_transform_point(end_pos, bone_to_world[hitbox->bone]);
+  matrix_3x4 compensated_bone = bone_to_world[hitbox->bone];
+  compensated_bone.mat[0][3] += pose_offset.x;
+  compensated_bone.mat[1][3] += pose_offset.y;
+  compensated_bone.mat[2][3] += pose_offset.z;
+  const Vec3 local_start = aimbot_inverse_transform_point(start_pos, compensated_bone);
+  const Vec3 local_end = aimbot_inverse_transform_point(end_pos, compensated_bone);
   constexpr float expansion = 1.25f;
   const Vec3 mins = hitbox->bbmin - Vec3{expansion, expansion, expansion};
   const Vec3 maxs = hitbox->bbmax + Vec3{expansion, expansion, expansion};
@@ -561,12 +606,13 @@ inline bool hitscan_aim_ray_hits_model_hitbox(Player* target,
 
 inline bool hitscan_aim_ray_hits_player_bounds(Player* target,
   const Vec3& start_pos,
-  const Vec3& end_pos) {
+  const Vec3& end_pos,
+  const Vec3& pose_offset = {}) {
   if (target == nullptr) {
     return false;
   }
 
-  const Vec3 origin = target->get_collision_origin();
+  const Vec3 origin = target->get_collision_origin() + pose_offset;
   const Vec3 mins = target->get_collideable_mins() + origin - Vec3{2.0f, 2.0f, 2.0f};
   const Vec3 maxs = target->get_collideable_maxs() + origin + Vec3{2.0f, 2.0f, 2.0f};
   if (!aimbot_vec3_is_finite(mins) || !aimbot_vec3_is_finite(maxs)) {
@@ -578,12 +624,13 @@ inline bool hitscan_aim_ray_hits_player_bounds(Player* target,
 
 inline bool hitscan_aim_ray_hits_entity_bounds(Entity* target,
   const Vec3& start_pos,
-  const Vec3& end_pos) {
+  const Vec3& end_pos,
+  const Vec3& pose_offset = {}) {
   if (target == nullptr) {
     return false;
   }
 
-  const Vec3 origin = target->get_collision_origin();
+  const Vec3 origin = target->get_collision_origin() + pose_offset;
   const Vec3 mins = target->get_collideable_mins() + origin - Vec3{2.0f, 2.0f, 2.0f};
   const Vec3 maxs = target->get_collideable_maxs() + origin + Vec3{2.0f, 2.0f, 2.0f};
   if (!aimbot_vec3_is_finite(mins) || !aimbot_vec3_is_finite(maxs)) {
@@ -617,15 +664,19 @@ inline bool hitscan_aim_trace_geometry(const aimbot_candidate& candidate,
   }
 
   if (candidate.player != nullptr) {
+    if (!hitscan_aim_current_player_visible(start_pos, candidate.player)) {
+      return false;
+    }
+    const Vec3 pose_offset = candidate.pose_timing_valid ? candidate.pose_offset : Vec3{};
     if (candidate.hitbox >= 0) {
       const int studio_hitbox = candidate.studio_hitbox >= 0
         ? candidate.studio_hitbox
         : aimbot_base_hitbox_to_studio(candidate.player, candidate.hitbox);
-      return hitscan_aim_ray_hits_model_hitbox(candidate.player, studio_hitbox, start_pos, target_end) ||
-        (candidate.hitbox != aim_hitbox_head && hitscan_aim_ray_hits_player_bounds(candidate.player, start_pos, target_end));
+      return hitscan_aim_ray_hits_model_hitbox(candidate.player, studio_hitbox, start_pos, target_end, pose_offset) ||
+        (candidate.hitbox != aim_hitbox_head && hitscan_aim_ray_hits_player_bounds(candidate.player, start_pos, target_end, pose_offset));
     }
 
-    return hitscan_aim_ray_hits_player_bounds(candidate.player, start_pos, target_end);
+    return hitscan_aim_ray_hits_player_bounds(candidate.player, start_pos, target_end, pose_offset);
   }
 
   return hitscan_aim_ray_hits_entity_bounds(candidate.entity, start_pos, target_end);
@@ -669,7 +720,9 @@ inline hitscan_point hitscan_aim_make_point(Player* localplayer,
   hitscan_trace_result trace{};
   const bool trace_reaches_target = hitscan_aim_trace_point(localplayer, target, position, &trace);
   const bool trace_hit_target = hitscan_aim_same_entity(trace.entity, target);
-  if (target->get_class_id() == class_id::PLAYER && !trace_hit_target) {
+  if (target->get_class_id() == class_id::PLAYER &&
+      (!hitscan_aim_current_player_visible(start_pos, target) ||
+       (!trace_hit_target && !hitscan_aim_world_clear(start_pos, position)))) {
     point.reject_debug = hitscan_aim_make_reject_debug(
       target,
       aimbot_reject_reason::trace_blocked,
@@ -789,6 +842,8 @@ inline hitscan_point hitscan_aim_find_point(Player* localplayer,
     (settings.hitbox_mask & aim_hitbox_mask_head) != 0 &&
     !body_forced;
 
+  const hitscan_pose_timing pose_timing = hitscan_aim_pose_timing(target);
+
   matrix_3x4 bone_to_world[hitscan_aim_max_bones]{};
   int bone_count = 0;
   if (!hitscan_aim_get_bones(target, bone_to_world, &bone_count)) {
@@ -855,6 +910,9 @@ inline hitscan_point hitscan_aim_find_point(Player* localplayer,
         hitbox->bone,
         entry.priority,
         position);
+      point.pose_timing_valid = pose_timing.valid;
+      point.pose_target_tick = pose_timing.target_tick;
+      point.pose_command_tick = pose_timing.command_tick;
       if (!point.valid) {
         hitscan_aim_keep_reject(&best, point.reject_debug);
         continue;
@@ -1043,12 +1101,12 @@ inline aimbot_candidate hitscan_aim_make_candidate(Player* localplayer,
   candidate.distance = distance_3d(localplayer->get_origin(), player->get_origin());
   candidate.health = player->get_health();
   candidate.simulation_time = player->get_simulation_time();
-
-  candidate.tick_count = 0;
-  if (!backtrack::command_tick_for_current_pose(
-        candidate.simulation_time, &candidate.tick_count)) {
-    candidate.tick_count = 0;
-  }
+  candidate.pose_timing_valid = point.pose_timing_valid;
+  candidate.pose_target_tick = point.pose_target_tick;
+  candidate.pose_command_tick = point.pose_command_tick;
+  candidate.pose_lead_seconds = point.pose_lead_seconds;
+  candidate.pose_offset = point.pose_offset;
+  candidate.tick_count = point.pose_command_tick;
   candidate.backtrack = false;
   candidate.command_angles = hitscan_aim_command_angles(localplayer, point.angles);
   candidate.visible = true;

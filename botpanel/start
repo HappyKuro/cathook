@@ -43,7 +43,7 @@ printf '%s\n' "$$" >&9
 
 if [ "${CAT_START_CLEANUP:-1}" != "0" ]; then
     echo "Cleaning stale Cathook panel, bot, IPC, and display processes..."
-    CAT_PRESERVE_START_LOCK=1 "$script_dir/stop"
+    CAT_PRESERVE_START_LOCK=1 CAT_START_PID="$$" "$script_dir/stop"
 fi
 
 if [ "$requested_visible_windows" = "1" ]; then
@@ -59,6 +59,20 @@ else
 fi
 port="${CAT_IPC_PORT:-7655}"
 textmode_game="${CAT_TEXTMODE_GAME:-1}"
+if [ -n "${CAT_STEAM_TXTMODE:-}" ]; then
+    steam_txtmode="$CAT_STEAM_TXTMODE"
+elif [ "$textmode_game" = "1" ] && [ "$visible_windows" != "1" ]; then
+    steam_txtmode=1
+else
+    steam_txtmode=0
+fi
+steam_txtmode_hide_windows="${CAT_STEAM_TXTMODE_HIDE_WINDOWS:-1}"
+steam_txtmode_drop_draws="${CAT_STEAM_TXTMODE_DROP_DRAWS:-1}"
+steam_txtmode_trim_webhelper="${CAT_STEAM_TXTMODE_TRIM_WEBHELPER:-0}"
+steam_txtmode_frame_interval_us="${CAT_STEAM_TXTMODE_FRAME_INTERVAL_US:-100000}"
+steam_loop_sleep="${CAT_STM_LOOP_SLEEP:-1}"
+steam_loop_sleep_us="${CAT_STM_LOOP_SLEEP_US:-5000}"
+skip_dbus_run_session="${CAT_SKIP_DBUS_RUN_SESSION:-1}"
 launcher_version="legacy_style_runtime_bundle_xpra"
 xpra_log="${CAT_XPRA_LOG:-/tmp/cat-catbot-xpra.log}"
 xvfb_log="${CAT_XVFB_LOG:-/tmp/cat-catbot-xvfb.log}"
@@ -122,6 +136,7 @@ fix_workspace_permissions() {
         -name "stop" -o \
         -name "update" -o \
         -name "fix-oldshi" -o \
+        -name "fix-all" -o \
         -name "fix_permissions" -o \
         -name "install-catbots" -o \
         -name "remove-legacy" -o \
@@ -1121,8 +1136,8 @@ start_ipc_server() {
     sleep 1
     pkill -KILL -f "$install_root/ipc/bin/server -s" 2>/dev/null || true
 
-    rm -f /tmp/cat-ipc-server.pid /tmp/cat-ipc-server.log 2>/dev/null || true
-    rm -f /dev/shm/cathook_followbot_server 2>/dev/null || true
+    rm -f /tmp/cat-ipc-server.pid /tmp/cat-ipc-server.log \
+        "$install_root/ipc/cathook_followbot_server" /dev/shm/cathook_followbot_server 2>/dev/null || true
 
     if [ -f "$repo_root/Makefile" ] && {
         [ ! -x "$ipc_server_root/bin/server" ] ||
@@ -1140,14 +1155,18 @@ start_ipc_server() {
         exit 1
     fi
 
-    "$install_root/ipc/bin/server" -s --reset >/tmp/cat-ipc-server.log 2>&1 9>&- &
+    if command -v setsid >/dev/null 2>&1; then
+        nohup setsid "$install_root/ipc/bin/server" -s --reset >/tmp/cat-ipc-server.log 2>&1 </dev/null 9>&- &
+    else
+        nohup "$install_root/ipc/bin/server" -s --reset >/tmp/cat-ipc-server.log 2>&1 </dev/null 9>&- &
+    fi
     ipc_server_pid=$!
     echo "$ipc_server_pid" >/tmp/cat-ipc-server.pid
     disown "$ipc_server_pid" 2>/dev/null || true
 
     for _ in 1 2 3 4 5; do
         if ps -p "$ipc_server_pid" >/dev/null 2>&1; then
-            chmod 0666 /dev/shm/cathook_followbot_server 2>/dev/null || true
+            chmod 0666 "$install_root/ipc/cathook_followbot_server" 2>/dev/null || true
             return
         fi
         sleep 1
@@ -1331,7 +1350,14 @@ start_panel() {
             CAT_TEXTMODE_GAME="$textmode_game" \
             CAT_TF2_LAUNCH_MODE="${CAT_TF2_LAUNCH_MODE:-direct}" \
             CAT_STEAM_HEADLESS_GRAPHICS="${CAT_STEAM_HEADLESS_GRAPHICS:-1}" \
-            CAT_STEAM_TXTMODE="${CAT_STEAM_TXTMODE:-}" \
+            CAT_STEAM_TXTMODE="$steam_txtmode" \
+            CAT_STEAM_TXTMODE_HIDE_WINDOWS="$steam_txtmode_hide_windows" \
+            CAT_STEAM_TXTMODE_DROP_DRAWS="$steam_txtmode_drop_draws" \
+            CAT_STEAM_TXTMODE_TRIM_WEBHELPER="$steam_txtmode_trim_webhelper" \
+            CAT_STEAM_TXTMODE_FRAME_INTERVAL_US="$steam_txtmode_frame_interval_us" \
+            CAT_STM_LOOP_SLEEP="$steam_loop_sleep" \
+            CAT_STM_LOOP_SLEEP_US="$steam_loop_sleep_us" \
+            CAT_SKIP_DBUS_RUN_SESSION="$skip_dbus_run_session" \
             CAT_STEAM_WINDOW_OPTIONS="${CAT_STEAM_WINDOW_OPTIONS:-}" \
             CAT_GAME_WINDOW_OPTIONS="${CAT_GAME_WINDOW_OPTIONS:-}" \
             CAT_X_SCREEN="${CAT_X_SCREEN:-}" \
@@ -1367,7 +1393,14 @@ start_panel() {
         CAT_TEXTMODE_GAME="$textmode_game" \
         CAT_TF2_LAUNCH_MODE="${CAT_TF2_LAUNCH_MODE:-direct}" \
         CAT_STEAM_HEADLESS_GRAPHICS="${CAT_STEAM_HEADLESS_GRAPHICS:-1}" \
-        CAT_STEAM_TXTMODE="${CAT_STEAM_TXTMODE:-}" \
+        CAT_STEAM_TXTMODE="$steam_txtmode" \
+        CAT_STEAM_TXTMODE_HIDE_WINDOWS="$steam_txtmode_hide_windows" \
+        CAT_STEAM_TXTMODE_DROP_DRAWS="$steam_txtmode_drop_draws" \
+        CAT_STEAM_TXTMODE_TRIM_WEBHELPER="$steam_txtmode_trim_webhelper" \
+        CAT_STEAM_TXTMODE_FRAME_INTERVAL_US="$steam_txtmode_frame_interval_us" \
+        CAT_STM_LOOP_SLEEP="$steam_loop_sleep" \
+        CAT_STM_LOOP_SLEEP_US="$steam_loop_sleep_us" \
+        CAT_SKIP_DBUS_RUN_SESSION="$skip_dbus_run_session" \
         CAT_STEAM_WINDOW_OPTIONS="${CAT_STEAM_WINDOW_OPTIONS:-}" \
         CAT_GAME_WINDOW_OPTIONS="${CAT_GAME_WINDOW_OPTIONS:-}" \
         CAT_X_SCREEN="${CAT_X_SCREEN:-}" \
